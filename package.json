@@ -2,13 +2,14 @@
   "name": "clio-mcp",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "build/index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "tsc && chmod 755 build/index.js"
+    "build": "tsc && chmod 755 build/index.js",
+    "start": "node build/index.js"
   },
   "bin": {
-    "weather": "./build/index.js"
+    "clio-mcp": "./build/index.js"
   },
   "files": [
     "build"
@@ -27,6 +28,8 @@
   "homepage": "https://github.com/oktopeak/clio-mcp#readme",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "dotenv": "^16.6.1",
+    "open": "^11.0.0",
     "zod": "^3.25.76"
   },
   "devDependencies": {

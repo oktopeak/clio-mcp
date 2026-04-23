@@ -32,3 +32,5 @@ coverage/
 
 # MCP / runtime artifacts
 *.pid
+
+tokens.enc
