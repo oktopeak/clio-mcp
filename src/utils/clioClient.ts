@@ -28,7 +28,8 @@ async function clioFetch(url: string, init: RequestInit): Promise<Response> {
 
     if (res.status === 429) {
       if (attempt < RETRY_DELAYS_MS.length) {
-        const delay = RETRY_DELAYS_MS[attempt];
+        const retryAfter = res.headers.get("Retry-After");
+        const delay = retryAfter ? parseInt(retryAfter) * 1000 : RETRY_DELAYS_MS[attempt];
         console.error(`[rate-limit] 429 received, retrying in ${delay}ms (attempt ${attempt + 1}/${RETRY_DELAYS_MS.length})`);
         await new Promise<void>((resolve) => setTimeout(resolve, delay));
         continue;
@@ -36,7 +37,25 @@ async function clioFetch(url: string, init: RequestInit): Promise<Response> {
       throw new Error("Clio rate limit exceeded after 3 retries.");
     }
 
-    if (!res.ok) throw new ClioApiError(res.status, `Clio API error ${res.status}: ${await res.text()}`);
+    if (!res.ok) {
+      const raw = await res.text();
+      let msg = raw;
+      try {
+        const json = JSON.parse(raw);
+        if (typeof json.message === "string") {
+          msg = json.message;
+        } else if (typeof json.error === "string") {
+          msg = json.error;
+        } else if (json.error && typeof json.error === "object") {
+          msg = json.error.message ?? JSON.stringify(json.error);
+        } else if (Array.isArray(json.errors)) {
+          msg = json.errors.map((e: any) => (typeof e === "string" ? e : e.message ?? JSON.stringify(e))).join("; ");
+        } else {
+          msg = JSON.stringify(json);
+        }
+      } catch { /* use raw text */ }
+      throw new ClioApiError(res.status, `Clio API error ${res.status} on ${url}: ${msg}`);
+    }
     return res;
   }
   throw new Error("clioFetch: unexpected loop exit");

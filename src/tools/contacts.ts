@@ -28,7 +28,7 @@ export function registerContactTools(server: McpServer): void {
         });
         const contacts = data.data as any[];
 
-        await appendAuditLog({ tool: "search_contacts", args: { query, limit }, outcome: "success" });
+        await appendAuditLog({ tool: "search_contacts", args: { query, limit }, outcome: "success", result_count: contacts?.length ?? 0 });
 
         if (!contacts || contacts.length === 0) {
           return { content: [{ type: "text", text: "No contacts found." }] };

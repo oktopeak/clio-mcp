@@ -39,6 +39,7 @@ export function registerDocumentTools(server: McpServer): void {
           tool: "list_documents",
           args: { matter_id, folder_id, limit },
           outcome: "success",
+          result_count: docs?.length ?? 0,
           ...(matter_id && { matter_id }),
         });
 

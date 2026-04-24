@@ -14,6 +14,7 @@ export interface ClioTokens {
   refresh_token: string;
   expires_at: number; // Unix timestamp
   clio_user_id?: string;
+  user_id_unavailable?: boolean; // true when who_am_i returned 403 — stops further retries
 }
 
 export async function runOAuthFlow(): Promise<ClioTokens> {
@@ -162,6 +163,29 @@ export async function getValidAccessToken(): Promise<string> {
   if (Date.now() > tokens.expires_at - 5 * 60 * 1000) {
     console.error("[auth] Token expiring soon, refreshing...");
     tokens = await refreshAccessToken(tokens);
+  }
+
+  if (!tokens.clio_user_id && !tokens.user_id_unavailable) {
+    try {
+      const meRes = await fetch(`${getClioBase()}/api/v4/users/who_am_i.json`, {
+        headers: { Authorization: `Bearer ${tokens.access_token}` },
+      });
+      if (meRes.ok) {
+        const me = await meRes.json() as any;
+        const userId = me.data?.id ? String(me.data.id) : undefined;
+        if (userId) {
+          tokens.clio_user_id = userId;
+          await saveTokens(tokens);
+          console.error(`[auth] Resolved missing clio_user_id: ${userId}`);
+        }
+      } else {
+        tokens.user_id_unavailable = true;
+        await saveTokens(tokens);
+        console.error(`[auth] who_am_i returned HTTP ${meRes.status} — user ID unavailable, will not retry`);
+      }
+    } catch (err: any) {
+      console.error(`[auth] Failed to resolve clio_user_id: ${err.message}`);
+    }
   }
 
   return tokens.access_token;

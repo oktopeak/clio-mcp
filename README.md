@@ -2,7 +2,7 @@
 
 Open-source Model Context Protocol (MCP) connector that lets Claude read live data from [Clio](https://www.clio.com) — matters, contacts, documents, tasks, calendar, and billing — without copying client information into chat windows. Built for law firms that care about attorney-client privilege, ABA Opinion 512 compliance, and keeping AI workflows inside their existing practice management stack.
 
-> **TL;DR** — 13 Clio tools exposed to Claude. Audit-logged for ABA Opinion 512. OAuth tokens encrypted at rest with AES-256-GCM. Local-only — no relay server, no cloud middleman. MIT license, free forever.
+> **TL;DR** — 15 Clio tools exposed to Claude. Audit-logged for ABA Opinion 512. OAuth tokens encrypted at rest with AES-256-GCM. Local-only — no relay server, no cloud middleman. MIT license, free forever.
 
 **Who this is for:** Law firm IT, legal operations teams, tech-forward partners, and engineers at legal tech companies. If you can follow a six-step terminal install, you can use this.
 
@@ -30,6 +30,11 @@ Once connected, you can ask Claude things like:
 **Tasks**
 - *"What tasks are due this week on matter 4821?"*
 - *"Show me all high-priority incomplete tasks"*
+- *"Create a task on matter 4821 to file the motion by Friday, high priority"*
+
+**Notes**
+- *"Add a note to matter 4821: initial consultation completed, client confirmed retainer"*
+- *"Create a note on this matter summarising today's call with the client"*
 
 **Calendar**
 - *"What do I have scheduled between April 28 and May 2?"*
@@ -59,7 +64,7 @@ ABA Opinion 512 (2023) requires attorneys using AI tools to understand how those
 
 - **No data retention by the connector.** The connector does not store matter data, client names, or any Clio content. It fetches from the API and passes results to Claude. The only thing persisted locally is your authentication token, and that is encrypted (see below).
 
-- **Scope limited to read.** The current release only reads data from Clio. It cannot create, edit, or delete matters, contacts, or billing entries. Your Clio data cannot be modified through this connector. This is a deliberate v1 design choice to minimize liability — write operations will be added in a future version with explicit opt-in.
+- **Scope limited to tasks and notes.** The connector can create tasks and notes on matters. It cannot create, edit, or delete matters, contacts, documents, calendar entries, or billing records. This is a deliberate v1 design choice — write access is limited to the two operations most useful for AI-assisted legal work while minimising liability.
 
 ### Token security — encryption at rest
 
@@ -146,16 +151,7 @@ Add the following block inside the `"mcpServers"` section, replacing the placeho
   "mcpServers": {
     "clio": {
       "command": "node",
-      "args": ["/FULL/PATH/TO/clio-mcp/build/index.js"],
-      "env": {
-        "CLIO_CLIENT_ID": "paste-your-client-id-here",
-        "CLIO_CLIENT_SECRET": "paste-your-client-secret-here",
-        "CLIO_REDIRECT_PORT": "5678",
-        "CLIO_API_BASE": "https://app.clio.com/api/v4",
-        "CLIO_AUTH_URL": "https://app.clio.com/oauth/authorize",
-        "CLIO_TOKEN_URL": "https://app.clio.com/oauth/token",
-        "ENCRYPTION_KEY": "paste-your-64-char-key-here"
-      }
+      "args": ["/FULL/PATH/TO/clio-mcp/build/index.js"]
     }
   }
 }
@@ -224,11 +220,12 @@ Claude selects and calls these tools automatically based on your questions. You 
 | `list_documents` | `matter_id` or `folder_id`, `limit` | Lists documents in a matter or folder |
 | `get_document` | `document_id` | Returns document metadata and a direct download URL |
 
-### Tasks (1 tool)
+### Tasks (2 tools)
 
 | Tool | Inputs | What it does |
 |---|---|---|
 | `list_tasks` | `matter_id`, `status` (Pending/Complete), `due_date_start`, `due_date_end`, `limit` | Lists tasks with optional filters |
+| `create_task` | `matter_id`, `name`, `priority` (High/Normal/Low), `due_date`, `assignee_id` | Creates a task on a matter; priority defaults to Normal |
 
 ### Calendar (1 tool)
 
@@ -248,6 +245,23 @@ Claude selects and calls these tools automatically based on your questions. You 
 |---|---|---|
 | `get_billing_summary` | `matter_id` | Returns total billed, outstanding balance, and last invoice date for a matter |
 
+### Notes (1 tool)
+
+| Tool | Inputs | What it does |
+|---|---|---|
+| `create_note` | `matter_id`, `subject`, `body` | Creates a note on a matter; appears in Clio's matter timeline |
+
+---
+
+## Resources
+
+The connector also exposes two MCP resources — read-only content that compatible clients (including Claude Desktop) can surface automatically at the start of a session.
+
+| Resource URI | What it contains |
+|---|---|
+| `clio://compliance/notice` | One-paragraph compliance reminder covering ABA Opinion 512, audit logging, and the attorney-review requirement for AI-generated content |
+| `clio://auth/status` | Live authentication state — whether you are connected, your Clio user ID, and minutes until token expiry |
+
 ---
 
 ## Configuration reference
@@ -263,7 +277,6 @@ All settings are passed as environment variables in your Claude Desktop config (
 | `CLIO_API_BASE` | No | `https://app.clio.com/api/v4` | Override for Clio EU, Canada, or Australia (e.g., `https://eu.app.clio.com/api/v4`) |
 | `CLIO_AUTH_URL` | No | `https://app.clio.com/oauth/authorize` | OAuth authorization endpoint |
 | `CLIO_TOKEN_URL` | No | `https://app.clio.com/oauth/token` | OAuth token endpoint |
-| `CLIO_SCOPE` | No | `openid` | OAuth scopes to request |
 
 ---
 
@@ -286,6 +299,7 @@ Each entry contains:
 | `error_message` | Present only when `outcome` is `error` |
 | `clio_user_id` | The Clio user whose credentials were active |
 | `matter_id` | Present for matter-specific queries |
+| `result_count` | Present for list tools — number of records returned |
 
 The log file is append-only and never rotated or truncated by this software. To archive old entries, use your operating system's log rotation tools (`logrotate` on Linux/Mac).
 

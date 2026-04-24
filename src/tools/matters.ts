@@ -30,7 +30,7 @@ export function registerMatterTools(server: McpServer): void {
         const data = await clioGet("/matters.json", params);
         const matters = data.data as any[];
 
-        await appendAuditLog({ tool: "list_matters", args: { status, limit }, outcome: "success" });
+        await appendAuditLog({ tool: "list_matters", args: { status, limit }, outcome: "success", result_count: matters?.length ?? 0 });
 
         if (!matters || matters.length === 0) {
           return { content: [{ type: "text", text: "No matters found." }] };

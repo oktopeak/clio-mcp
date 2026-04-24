@@ -35,6 +35,7 @@ export function registerActivityTools(server: McpServer): void {
           tool: "list_time_entries",
           args: { matter_id, start_date, end_date, limit },
           outcome: "success",
+          result_count: entries?.length ?? 0,
           ...(matter_id && { matter_id }),
         });
 

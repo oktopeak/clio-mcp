@@ -24,7 +24,7 @@ export function registerCalendarTools(server: McpServer): void {
         });
         const entries = data.data as any[];
 
-        await appendAuditLog({ tool: "list_calendar_entries", args: { start_date, end_date }, outcome: "success" });
+        await appendAuditLog({ tool: "list_calendar_entries", args: { start_date, end_date }, outcome: "success", result_count: entries?.length ?? 0 });
 
         if (!entries || entries.length === 0) {
           return { content: [{ type: "text", text: "No calendar entries found." }] };

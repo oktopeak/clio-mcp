@@ -18,6 +18,7 @@ export interface AuditEntry {
   error_message?: string;
   clio_user_id?: string;
   matter_id?: number;
+  result_count?: number;
 }
 
 function redactArgs(args: Record<string, unknown>): Record<string, unknown> {
@@ -35,7 +36,7 @@ function redactArgs(args: Record<string, unknown>): Record<string, unknown> {
 }
 
 export async function appendAuditLog(
-  entry: Omit<AuditEntry, "timestamp" | "clio_user_id"> & { clio_user_id?: string }
+  entry: Omit<AuditEntry, "timestamp" | "clio_user_id"> & { clio_user_id?: string; result_count?: number }
 ): Promise<void> {
   try {
     await fs.mkdir(AUDIT_DIR, { recursive: true });
@@ -53,6 +54,7 @@ export async function appendAuditLog(
       ...(entry.error_message && { error_message: entry.error_message }),
       ...(clio_user_id && { clio_user_id }),
       ...(entry.matter_id !== undefined && { matter_id: entry.matter_id }),
+      ...(entry.result_count !== undefined && { result_count: entry.result_count }),
     };
 
     await fs.appendFile(AUDIT_FILE, JSON.stringify(full) + "\n", "utf8");
