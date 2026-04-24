@@ -1,6 +1,10 @@
 import { getValidAccessToken } from "../auth/oauth.js";
 
-const BASE = process.env.CLIO_API_BASE ?? "https://app.clio.com/api/v4";
+function getBase() {
+  const region = (process.env.CLIO_REGION ?? "us").toLowerCase();
+  const clioBase = region === "eu" ? "https://eu.app.clio.com" : "https://app.clio.com";
+  return process.env.CLIO_API_BASE ?? `${clioBase}/api/v4`;
+}
 const RETRY_DELAYS_MS = [1000, 2000, 4000];
 
 async function clioFetch(url: string, init: RequestInit): Promise<Response> {
@@ -29,7 +33,7 @@ async function clioFetch(url: string, init: RequestInit): Promise<Response> {
 
 export async function clioGet(path: string, params?: Record<string, string>): Promise<any> {
   const token = await getValidAccessToken();
-  const url = new URL(`${BASE}${path}`);
+  const url = new URL(`${getBase()}${path}`);
   if (params) {
     for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
   }
@@ -41,7 +45,7 @@ export async function clioGet(path: string, params?: Record<string, string>): Pr
 
 export async function clioPost(path: string, body: unknown): Promise<any> {
   const token = await getValidAccessToken();
-  const url = new URL(`${BASE}${path}`);
+  const url = new URL(`${getBase()}${path}`);
   const res = await clioFetch(url.toString(), {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },

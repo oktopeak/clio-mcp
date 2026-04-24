@@ -2,11 +2,12 @@ import http from "http";
 import crypto from "crypto";
 import { saveTokens, loadTokens } from "./tokenStorage.js";
 
-// Override with CLIO_TOKEN_URL / CLIO_AUTH_URL env vars to use Clio Platform endpoints:
-//   Platform auth:  https://auth.api.clio.com/oauth/authorize
-//   Platform token: https://auth.api.clio.com/oauth/token
-const CLIO_AUTH_URL = process.env.CLIO_AUTH_URL ?? "https://app.clio.com/oauth/authorize";
-const CLIO_TOKEN_URL = process.env.CLIO_TOKEN_URL ?? "https://app.clio.com/oauth/token";
+function getClioBase() {
+  const region = (process.env.CLIO_REGION ?? "us").toLowerCase();
+  return region === "eu" ? "https://eu.app.clio.com" : "https://app.clio.com";
+}
+function getAuthUrl() { return process.env.CLIO_AUTH_URL ?? `${getClioBase()}/oauth/authorize`; }
+function getTokenUrl() { return process.env.CLIO_TOKEN_URL ?? `${getClioBase()}/oauth/token`; }
 
 export interface ClioTokens {
   access_token: string;
@@ -24,13 +25,12 @@ export async function runOAuthFlow(): Promise<ClioTokens> {
   const state = crypto.randomBytes(16).toString("hex");
 
   const authUrl =
-    `${CLIO_AUTH_URL}?` +
+    `${getAuthUrl()}?` +
     new URLSearchParams({
       response_type: "code",
       client_id: clientId,
       redirect_uri: redirectUri,
       state,
-      scope: process.env.CLIO_SCOPE ?? "openid",
     });
 
   const { default: open } = await import("open");
@@ -46,9 +46,8 @@ export async function runOAuthFlow(): Promise<ClioTokens> {
     redirectUri
   );
 
-  const apiBase = process.env.CLIO_API_BASE ?? "https://app.clio.com/api/v4";
   try {
-    const meRes = await fetch(`${apiBase}/users/who_am_i.json`, {
+    const meRes = await fetch(`${getClioBase()}/api/v4/users/who_am_i.json`, {
       headers: { Authorization: `Bearer ${tokens.access_token}` },
     });
     if (meRes.ok) {
@@ -111,7 +110,8 @@ async function exchangeCodeForTokens(
   clientSecret: string,
   redirectUri: string
 ): Promise<ClioTokens> {
-  console.error(`[auth] Token exchange → POST ${CLIO_TOKEN_URL}`);
+  const tokenUrl = getTokenUrl();
+  console.error(`[auth] Token exchange → POST ${tokenUrl}`);
   console.error(`[auth]   client_id   : ${clientId.substring(0, 8)}...`);
   console.error(`[auth]   redirect_uri: ${redirectUri}`);
 
@@ -123,7 +123,7 @@ async function exchangeCodeForTokens(
     redirect_uri: redirectUri,
   });
 
-  const res = await fetch(CLIO_TOKEN_URL, {
+  const res = await fetch(tokenUrl, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,
@@ -134,8 +134,12 @@ async function exchangeCodeForTokens(
   if (!res.ok) {
     const err = await res.text();
     throw new Error(
-      `Token exchange failed (redirect_uri used: "${redirectUri}"): ${err}\n` +
-      `Verify this redirect URI is registered exactly in your Clio developer app.`
+      `Token exchange failed.\n` +
+      `  Token URL  : ${tokenUrl}\n` +
+      `  Redirect   : ${redirectUri}\n` +
+      `  client_id  : ${clientId.substring(0, 6)}... (length ${clientId.length})\n` +
+      `  Response   : ${err}\n` +
+      `\nIf the error is "invalid_client": verify CLIO_CLIENT_ID and CLIO_CLIENT_SECRET match your Clio developer app exactly.`
     );
   }
 
@@ -167,7 +171,7 @@ async function refreshAccessToken(tokens: ClioTokens): Promise<ClioTokens> {
   const clientId = (process.env.CLIO_CLIENT_ID ?? "").trim();
   const clientSecret = (process.env.CLIO_CLIENT_SECRET ?? "").trim();
 
-  const res = await fetch(CLIO_TOKEN_URL, {
+  const res = await fetch(getTokenUrl(), {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
