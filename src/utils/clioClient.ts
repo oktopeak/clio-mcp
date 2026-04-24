@@ -1,10 +1,21 @@
 import { getValidAccessToken } from "../auth/oauth.js";
 
+export class ClioApiError extends Error {
+  constructor(public readonly statusCode: number, message: string) {
+    super(message);
+    this.name = "ClioApiError";
+  }
+}
+
 function getBase() {
   const region = (process.env.CLIO_REGION ?? "us").toLowerCase();
   const clioBase = region === "eu" ? "https://eu.app.clio.com" : "https://app.clio.com";
   return process.env.CLIO_API_BASE ?? `${clioBase}/api/v4`;
 }
+export function getClioBaseUrl(): string {
+  return getBase();
+}
+
 const RETRY_DELAYS_MS = [1000, 2000, 4000];
 
 async function clioFetch(url: string, init: RequestInit): Promise<Response> {
@@ -25,7 +36,7 @@ async function clioFetch(url: string, init: RequestInit): Promise<Response> {
       throw new Error("Clio rate limit exceeded after 3 retries.");
     }
 
-    if (!res.ok) throw new Error(`Clio API error ${res.status}: ${await res.text()}`);
+    if (!res.ok) throw new ClioApiError(res.status, `Clio API error ${res.status}: ${await res.text()}`);
     return res;
   }
   throw new Error("clioFetch: unexpected loop exit");

@@ -10,9 +10,34 @@ Built for law firms that need AI to work inside their existing practice manageme
 
 Once connected, you can ask Claude things like:
 
+**Matters**
 - *"Show me all open matters for Acme Corp"*
 - *"What's the status of matter 2024-0042?"*
 - *"List my pending matters from the last quarter"*
+
+**Contacts**
+- *"Find the contact details for Jane Smith"*
+- *"What's the email address and phone number for client ID 8821?"*
+
+**Documents**
+- *"List all documents on matter 4821"*
+- *"Get the download link for document 9934"*
+
+**Tasks**
+- *"What tasks are due this week on matter 4821?"*
+- *"Show me all high-priority incomplete tasks"*
+
+**Calendar**
+- *"What do I have scheduled between April 28 and May 2?"*
+- *"List all calendar entries for next week"*
+
+**Time entries**
+- *"How many hours have been logged on matter 4821 this month?"*
+- *"Show me all time entries between April 1 and April 30"*
+
+**Billing**
+- *"What's the outstanding balance on matter 4821?"*
+- *"When was the last invoice issued for this matter?"*
 
 The connector retrieves live data from Clio on every request. Nothing is cached or stored by the AI.
 
@@ -158,15 +183,60 @@ You should see your Clio user ID and token expiry time.
 
 ## Available tools
 
+Claude selects and calls these tools automatically based on your questions. You do not need to invoke them by name.
+
+### Auth
+
 | Tool | What it does |
 |---|---|
 | `authenticate` | Opens your browser to Clio's login page and stores your credentials securely |
 | `auth_status` | Shows whether you are currently authenticated and when your session expires |
 | `logout` | Clears your stored credentials from this machine |
-| `list_matters` | Returns matters from your Clio account, with optional filters for status and count |
-| `get_matter` | Returns full detail for a specific matter by its Clio ID |
 
-Claude selects and calls these tools automatically based on your questions. You do not need to invoke them by name.
+### Matters
+
+| Tool | Inputs | What it does |
+|---|---|---|
+| `list_matters` | `status` (Open/Pending/Closed), `limit` | Lists matters with optional status filter |
+| `get_matter` | `matter_id` | Returns full detail for a specific matter |
+
+### Contacts
+
+| Tool | Inputs | What it does |
+|---|---|---|
+| `search_contacts` | `query`, `limit` | Searches contacts by name, email, or company |
+| `get_contact` | `contact_id` | Returns full detail for a specific contact including all emails, phone numbers, and addresses |
+
+### Documents
+
+| Tool | Inputs | What it does |
+|---|---|---|
+| `list_documents` | `matter_id` or `folder_id`, `limit` | Lists documents in a matter or folder |
+| `get_document` | `document_id` | Returns document metadata and a direct download URL |
+
+### Tasks
+
+| Tool | Inputs | What it does |
+|---|---|---|
+| `list_tasks` | `matter_id`, `status` (Pending/Complete), `due_date_start`, `due_date_end`, `limit` | Lists tasks with optional filters |
+
+### Calendar
+
+| Tool | Inputs | What it does |
+|---|---|---|
+| `list_calendar_entries` | `start_date`, `end_date` | Lists calendar entries within a date range |
+
+### Time entries
+
+| Tool | Inputs | What it does |
+|---|---|---|
+| `list_time_entries` | `matter_id`, `start_date`, `end_date`, `limit` | Lists billable time entries with optional filters |
+
+### Billing
+
+| Tool | Inputs | What it does |
+|---|---|---|
+| `get_billing_summary` | `matter_id` | Returns total billed, outstanding balance, and last invoice date for a matter |
 
 ---
 

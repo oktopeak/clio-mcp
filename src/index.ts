@@ -4,6 +4,12 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { clearTokens, loadTokens } from "./auth/tokenStorage.js";
 import { getValidAccessToken } from "./auth/oauth.js";
 import { registerMatterTools } from "./tools/matters.js";
+import { registerContactTools } from "./tools/contacts.js";
+import { registerDocumentTools } from "./tools/documents.js";
+import { registerTaskTools } from "./tools/tasks.js";
+import { registerCalendarTools } from "./tools/calendar.js";
+import { registerActivityTools } from "./tools/activities.js";
+import { registerBillingTools } from "./tools/billing.js";
 import { appendAuditLog } from "./utils/auditLog.js";
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -100,6 +106,12 @@ server.registerTool(
 
 // ── Matter tools ──────────────────────────────────────────────────
 registerMatterTools(server);
+registerContactTools(server);
+registerDocumentTools(server);
+registerTaskTools(server);
+registerCalendarTools(server);
+registerActivityTools(server);
+registerBillingTools(server);
 
 async function main() {
     const missing = (["CLIO_CLIENT_ID", "CLIO_CLIENT_SECRET", "ENCRYPTION_KEY"] as const)

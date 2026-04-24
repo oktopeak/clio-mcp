@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import z from "zod";
-import { clioGet } from "../utils/clioClient.js";
+import { clioGet, ClioApiError } from "../utils/clioClient.js";
 import { appendAuditLog } from "../utils/auditLog.js";
 
 const MATTER_LIST_FIELDS =
@@ -91,6 +91,10 @@ export function registerMatterTools(server: McpServer): void {
           content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
         };
       } catch (err: any) {
+        if (err instanceof ClioApiError && err.statusCode === 404) {
+          await appendAuditLog({ tool: "get_matter", args: { matter_id }, outcome: "success", matter_id });
+          return { content: [{ type: "text", text: `Matter ${matter_id} not found.` }] };
+        }
         await appendAuditLog({ tool: "get_matter", args: { matter_id }, outcome: "error", error_message: err.message, matter_id });
         return {
           content: [{ type: "text", text: `Error: ${err.message}` }],
