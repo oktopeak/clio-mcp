@@ -1,8 +1,12 @@
-# Clio MCP Connector
+# Clio MCP Server: Connect Claude to Clio Practice Management
 
-Connect Claude directly to your Clio account. Ask questions, retrieve matters, and get answers — without leaving your AI assistant and without copying data into chat windows.
+Open-source Model Context Protocol (MCP) connector that lets Claude read live data from [Clio](https://www.clio.com) — matters, contacts, documents, tasks, calendar, and billing — without copying client information into chat windows. Built for law firms that care about attorney-client privilege, ABA Opinion 512 compliance, and keeping AI workflows inside their existing practice management stack.
 
-Built for law firms that need AI to work inside their existing practice management stack, not around it.
+> **TL;DR** — 13 Clio tools exposed to Claude. Audit-logged for ABA Opinion 512. OAuth tokens encrypted at rest with AES-256-GCM. Local-only — no relay server, no cloud middleman. MIT license, free forever.
+
+**Who this is for:** Law firm IT, legal operations teams, tech-forward partners, and engineers at legal tech companies. If you can follow a six-step terminal install, you can use this.
+
+**Who this is NOT for (yet):** Attorneys who've never opened a terminal. A simpler one-command installer is planned for v0.2. In the meantime, ask your IT person to run the setup below — or have our team deploy it for you ([oktopeak.com/services/legal-ai-integration/](https://oktopeak.com/services/legal-ai-integration/)).
 
 ---
 
@@ -55,7 +59,7 @@ ABA Opinion 512 (2023) requires attorneys using AI tools to understand how those
 
 - **No data retention by the connector.** The connector does not store matter data, client names, or any Clio content. It fetches from the API and passes results to Claude. The only thing persisted locally is your authentication token, and that is encrypted (see below).
 
-- **Scope limited to read.** The current release only reads data from Clio. It cannot create, edit, or delete matters, contacts, or billing entries. Your Clio data cannot be modified through this connector.
+- **Scope limited to read.** The current release only reads data from Clio. It cannot create, edit, or delete matters, contacts, or billing entries. Your Clio data cannot be modified through this connector. This is a deliberate v1 design choice to minimize liability — write operations will be added in a future version with explicit opt-in.
 
 ### Token security — encryption at rest
 
@@ -83,7 +87,9 @@ Before you begin, make sure you have:
 
 ---
 
-## Setup — five minutes
+## Setup
+
+Takes about five minutes if Node.js and Claude Desktop are already installed. Add another five to ten minutes if you need to install them first.
 
 ### Step 1 — Clone and build
 
@@ -116,13 +122,15 @@ pwd
 
 ### Step 3 — Generate your encryption key
 
-In your terminal, run this one-time command to generate a secure encryption key:
+This is a one-time password the connector uses to encrypt your Clio tokens on disk. You generate it on your own machine. It never leaves your laptop, and no one else ever sees it. If you lose it, you re-authenticate — nothing dangerous happens.
+
+In your terminal, run:
 
 ```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
-Copy the output. It will look like a long string of random letters and numbers. Keep it safe — if you lose it, you will need to re-authenticate.
+Copy the output. It will be a 64-character string of random letters and numbers. Paste it into a password manager or a safe note — you will use it in Step 4 and you will need it if you ever reconfigure the connector.
 
 ### Step 4 — Configure Claude Desktop
 
@@ -141,11 +149,11 @@ Add the following block inside the `"mcpServers"` section, replacing the placeho
       "args": ["/FULL/PATH/TO/clio-mcp/build/index.js"],
       "env": {
         "CLIO_CLIENT_ID": "paste-your-client-id-here",
-        "CLIO_CLIENT_SECRET":"paste-your-client-secret-here",
-        "CLIO_REDIRECT_PORT": 5678,
-        "CLIO_AUTH_URL": "https://eu.app.clio.com/oauth/authorize",
-        "CLIO_TOKEN_URL": "https://eu.app.clio.com/oauth/token",
-        "CLIO_API_BASE": "https://eu.app.clio.com/api/v4",
+        "CLIO_CLIENT_SECRET": "paste-your-client-secret-here",
+        "CLIO_REDIRECT_PORT": "5678",
+        "CLIO_API_BASE": "https://app.clio.com/api/v4",
+        "CLIO_AUTH_URL": "https://app.clio.com/oauth/authorize",
+        "CLIO_TOKEN_URL": "https://app.clio.com/oauth/token",
         "ENCRYPTION_KEY": "paste-your-64-char-key-here"
       }
     }
@@ -156,6 +164,8 @@ Add the following block inside the `"mcpServers"` section, replacing the placeho
 Replace `/FULL/PATH/TO/clio-mcp` with the path you noted in Step 1 (e.g., `/Users/yourname/clio-mcp`).
 
 If the file already has other MCP servers configured, add a comma after the last entry and then add the `"clio"` block.
+
+**Using Clio EU, Canada, or Australia?** Change `CLIO_API_BASE`, `CLIO_AUTH_URL`, and `CLIO_TOKEN_URL` to your regional Clio endpoints (for example, `https://eu.app.clio.com/...`). Contact Clio support if you are unsure which region your firm is on.
 
 ### Step 5 — Restart Claude Desktop
 
@@ -185,7 +195,7 @@ You should see your Clio user ID and token expiry time.
 
 Claude selects and calls these tools automatically based on your questions. You do not need to invoke them by name.
 
-### Auth
+### Auth (3 tools)
 
 | Tool | What it does |
 |---|---|
@@ -193,46 +203,46 @@ Claude selects and calls these tools automatically based on your questions. You 
 | `auth_status` | Shows whether you are currently authenticated and when your session expires |
 | `logout` | Clears your stored credentials from this machine |
 
-### Matters
+### Matters (2 tools)
 
 | Tool | Inputs | What it does |
 |---|---|---|
 | `list_matters` | `status` (Open/Pending/Closed), `limit` | Lists matters with optional status filter |
 | `get_matter` | `matter_id` | Returns full detail for a specific matter |
 
-### Contacts
+### Contacts (2 tools)
 
 | Tool | Inputs | What it does |
 |---|---|---|
 | `search_contacts` | `query`, `limit` | Searches contacts by name, email, or company |
 | `get_contact` | `contact_id` | Returns full detail for a specific contact including all emails, phone numbers, and addresses |
 
-### Documents
+### Documents (2 tools)
 
 | Tool | Inputs | What it does |
 |---|---|---|
 | `list_documents` | `matter_id` or `folder_id`, `limit` | Lists documents in a matter or folder |
 | `get_document` | `document_id` | Returns document metadata and a direct download URL |
 
-### Tasks
+### Tasks (1 tool)
 
 | Tool | Inputs | What it does |
 |---|---|---|
 | `list_tasks` | `matter_id`, `status` (Pending/Complete), `due_date_start`, `due_date_end`, `limit` | Lists tasks with optional filters |
 
-### Calendar
+### Calendar (1 tool)
 
 | Tool | Inputs | What it does |
 |---|---|---|
 | `list_calendar_entries` | `start_date`, `end_date` | Lists calendar entries within a date range |
 
-### Time entries
+### Time entries (1 tool)
 
 | Tool | Inputs | What it does |
 |---|---|---|
 | `list_time_entries` | `matter_id`, `start_date`, `end_date`, `limit` | Lists billable time entries with optional filters |
 
-### Billing
+### Billing (1 tool)
 
 | Tool | Inputs | What it does |
 |---|---|---|
@@ -250,12 +260,10 @@ All settings are passed as environment variables in your Claude Desktop config (
 | `CLIO_CLIENT_SECRET` | Yes | — | Client Secret from your Clio developer application |
 | `ENCRYPTION_KEY` | Yes | — | 64-character hex key for encrypting stored tokens |
 | `CLIO_REDIRECT_PORT` | No | `5678` | Local port for the OAuth callback. Change if 5678 is in use on your machine |
-| `CLIO_API_BASE` | No | `https://app.clio.com/api/v4` | Override to use Clio Platform (`https://eu.app.clio.com/api/v4`) |
+| `CLIO_API_BASE` | No | `https://app.clio.com/api/v4` | Override for Clio EU, Canada, or Australia (e.g., `https://eu.app.clio.com/api/v4`) |
 | `CLIO_AUTH_URL` | No | `https://app.clio.com/oauth/authorize` | OAuth authorization endpoint |
 | `CLIO_TOKEN_URL` | No | `https://app.clio.com/oauth/token` | OAuth token endpoint |
 | `CLIO_SCOPE` | No | `openid` | OAuth scopes to request |
-
-**Clio Platform (EU/Canada) users:** Set `CLIO_API_BASE`, `CLIO_AUTH_URL`, and `CLIO_TOKEN_URL` to your regional endpoints. Contact Clio support for the correct URLs for your region.
 
 ---
 
@@ -302,6 +310,31 @@ Add `"CLIO_REDIRECT_PORT": "5679"` to the `env` block in your Claude Desktop con
 
 ---
 
+## Need more than the connector?
+
+The open-source connector handles about 20% of what most firms eventually want from Claude + Clio. It reads your data. It does not build workflows around that data.
+
+Our **Legal AI Integration service** picks up where the connector stops:
+
+- **Document automation templates** — retainer agreements, pleadings, engagement letters, clause libraries drafted by Claude from live matter context, reviewed by an attorney before anything goes out
+- **Intake workflows** — new leads routed into qualified matters, pre-populated with client data, flagged by practice area
+- **Custom AI agents** — deadline reminders, billing review, matter summaries, contract negotiation assistants scoped to your firm's way of working
+- **Full compliance architecture** — audit logging that spans your DMS, e-signature tool, calendar, and billing system, not just Clio
+
+Fixed price, four to six weeks, ABA Opinion 512 compliant from day one.
+
+→ [oktopeak.com/services/legal-ai-integration/](https://oktopeak.com/services/legal-ai-integration/)
+
+---
+
+## Contributing
+
+Issues and pull requests welcome. If you run into a Clio API edge case this connector does not handle cleanly, open an issue with the scenario and an example request. If you want to add a tool that falls within the "read-only" v1 scope, send a PR.
+
+---
+
 ## License
 
-ISC © [Oktopeak](https://github.com/oktopeak)
+MIT © [Oktopeak](https://oktopeak.com)
+
+See [LICENSE](./LICENSE) for the full text.
