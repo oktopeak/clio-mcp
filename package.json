@@ -11,7 +11,8 @@
     "build": "tsc --project tsconfig.build.json && node -e \"require('fs').chmodSync('build/index.js', 0o755)\"",
     "start": "node build/index.js",
     "inspect": "npx @modelcontextprotocol/inspector node build/index.js",
-    "prepublishOnly": "npm run build && npm test"
+    "verify:no-secrets": "node scripts/verify-no-secrets.mjs",
+    "prepublishOnly": "npm run build && npm test && npm run verify:no-secrets"
   },
   "bin": {
     "clio-mcp": "build/index.js"

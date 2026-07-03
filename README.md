@@ -2,7 +2,7 @@
 
 Open-source Model Context Protocol (MCP) connector that lets Claude read live data from [Clio](https://www.clio.com) — matters, contacts, documents, tasks, calendar, and billing — without copying client information into chat windows. Built for law firms that care about attorney-client privilege, ABA Opinion 512 compliance, and keeping AI workflows inside their existing practice management stack.
 
-> **TL;DR** — 26 Clio tools exposed to Claude across stdio and HTTP/SSE transports. Audit-logged for ABA Opinion 512. OAuth tokens encrypted at rest with AES-256-GCM. Local-only — no relay server, no cloud middleman. MIT license, free forever.
+> **TL;DR** — 26 Clio tools exposed to Claude across stdio and HTTP/SSE transports. Audit-logged for ABA Opinion 512. OAuth tokens encrypted at rest with AES-256-GCM. Local-only — no relay server, no cloud middleman — when you register your own Clio developer app (the default setup below). A separate one-click "listed" install variant exists for the Clio App Directory and uses a minimal, login-only broker; see [Listed / one-click install variant](#listed--one-click-install-variant-app-directory) below. MIT license, free forever.
 
 **Who this is for:** Law firm IT, legal operations teams, tech-forward partners, and engineers at legal tech companies. If you can follow a five-step terminal install, you can use this.
 
@@ -49,7 +49,7 @@ ABA Opinion 512 (2023) requires attorneys using AI tools to understand how those
 
 - **No data retention by the connector.** The connector does not store matter data, client names, or any Clio content. It fetches from the API and passes results to Claude. The only thing persisted locally is your authentication token, and that is encrypted (see below).
 
-- **Scope limited to tasks, notes, and document uploads.** The connector can create tasks and notes on matters, and upload documents to matters. It cannot create, edit, or delete matters, contacts, calendar entries, or billing records. This is a deliberate v1 design choice — write access is limited to the operations most useful for AI-assisted legal work while minimising liability.
+- **Write access limited to creation, not editing or deletion.** The connector can create matters, tasks, notes, calendar entries, time entries, and activities, and upload documents. It cannot edit or delete matters or contacts, and has no write access to billing records (billing is read-only). There is no delete operation anywhere in the tool set. This is a deliberate v1 design choice — write access is limited to the operations most useful for AI-assisted legal work while minimising liability.
 
 ### Token security — encryption at rest
 
@@ -64,6 +64,18 @@ Authentication uses Clio's standard OAuth 2.0 flow. You log in through your brow
 ### Local-first architecture
 
 The connector runs entirely on your machine. There is no Clio MCP cloud service, no relay server, no third party in the middle. Your Clio API traffic goes directly from your device to Clio's servers.
+
+This is true for the default setup below, where you register your own Clio developer application. The one-click "listed" install variant (next section) is the one exception, and only for the login step.
+
+### Listed / one-click install variant (App Directory)
+
+If you installed this connector via the Clio App Directory's one-click install instead of registering your own Clio developer application, you're using the *listed variant*. It uses one Clio application owned by Oktopeak, shared across every installing firm, instead of a separate application per firm. That means the application's `client_secret` cannot be distributed to your machine — it lives only on a small hosted token broker Oktopeak operates.
+
+**What that changes, precisely:** matter data flows directly between your machine and Clio; only the login handshake passes through our token service. Every tool call — matters, contacts, documents, tasks, calendar, billing, everything — still goes directly from your machine to Clio's API, exactly as in the BYOC setup above. The broker never sees, stores, or logs any of it; it is only involved for the few seconds it takes to complete the OAuth login (and again, briefly, on token refresh). It stores nothing durable — no tokens, no session data survive past that single handshake.
+
+Full data-flow documentation for security reviewers, including a sequence diagram and what the broker persists versus never persists, is in the token broker's repository: [`docs/DATA_FLOW.md`](https://github.com/oktopeak/clio-mcp-backend/blob/main/docs/DATA_FLOW.md).
+
+Everything else — local AES-256-GCM token encryption, the audit log, and the 26 tools — is identical to the BYOC setup. Note that Clio's OAuth doesn't support requesting a narrower scope per login; the permissions your token carries are whatever the connecting Clio application was granted when it was registered in the Clio Developer Portal. For the listed app, that registration is kept to the minimum permission set the 26 tools need — the same principle you'd apply yourself when registering your own app for the BYOC setup. See [Option C](#option-c--one-click-via-clio-app-directory) below for the resulting Claude Desktop config.
 
 ---
 
@@ -267,6 +279,27 @@ Then point Claude Desktop at it via the [`mcp-remote`](https://www.npmjs.com/pac
 
 If you set `MCP_API_KEY` on the server, pass it as a header from `mcp-remote` (`--header "Authorization: Bearer <key>"`).
 
+#### Option C — One-click via Clio App Directory
+
+If you installed via the Clio App Directory, there's no developer application to register and no `CLIO_CLIENT_SECRET` to handle — the installer configures this for you. The resulting config uses `TOKEN_BROKER_URL` in place of `CLIO_CLIENT_ID`/`CLIO_CLIENT_SECRET`:
+
+```json
+{
+  "mcpServers": {
+    "clio": {
+      "command": "node",
+      "args": ["/FULL/PATH/TO/clio-mcp/build/index.js"],
+      "env": {
+        "TRANSPORT": "stdio",
+        "TOKEN_BROKER_URL": "https://broker.oktopeak.com"
+      }
+    }
+  }
+}
+```
+
+See [Listed / one-click install variant](#listed--one-click-install-variant-app-directory) above for what this changes about the data flow.
+
 ---
 
 If the file already has other MCP servers configured, add a comma after the last entry and then add the `"clio"` block.
@@ -415,8 +448,9 @@ All settings are passed as environment variables (in your Claude Desktop config 
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `CLIO_CLIENT_ID` | Yes | — | Client ID from your Clio developer application |
-| `CLIO_CLIENT_SECRET` | Yes | — | Client Secret from your Clio developer application |
+| `CLIO_CLIENT_ID` | Yes (BYOC) | — | Client ID from your Clio developer application. Not used, and not required, in the listed variant. |
+| `CLIO_CLIENT_SECRET` | Yes (BYOC) | — | Client Secret from your Clio developer application. Not used, and not required, in the listed variant. |
+| `TOKEN_BROKER_URL` | Yes (listed variant only) | — | URL of Oktopeak's hosted token broker. Set this INSTEAD OF `CLIO_CLIENT_ID`/`CLIO_CLIENT_SECRET` when installed via the Clio App Directory. See [Listed / one-click install variant](#listed--one-click-install-variant-app-directory). |
 | `TRANSPORT` | No | `http` | `stdio` or `http`. Defaults to `http` at v2.0.0; set to `stdio` for the pre-v2 behavior |
 | `MCP_BASE_URL` | HTTP mode | — | Public base URL of this server (e.g. `http://127.0.0.1:3000`). Used for the OAuth redirect |
 | `PORT` | No | `3000` | HTTP listen port (HTTP mode only) |

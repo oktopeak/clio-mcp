@@ -3,16 +3,16 @@ import { readFileSync } from 'fs';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { validateAuthEnv } from './config/startupValidation.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '../.env') });
 const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
 
 async function main() {
-    const missing = (["CLIO_CLIENT_ID", "CLIO_CLIENT_SECRET"] as const)
-        .filter((k) => !process.env[k]);
-    if (missing.length > 0) {
-        console.error(`[startup] Fatal: missing required env var(s): ${missing.join(", ")}. Check your .env file.`);
+    const authEnv = validateAuthEnv(process.env);
+    if (!authEnv.ok) {
+        console.error(authEnv.message);
         process.exit(1);
     }
 

@@ -1,6 +1,13 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { clearTokens, loadTokens } from "./tokenStorage.js";
-import { getValidAccessToken, buildAuthorizationUrl } from "./oauth.js";
+import {
+  getValidAccessToken,
+  buildAuthorizationUrl,
+  isBrokerMode,
+  generateCodeVerifier,
+  deriveCodeChallenge,
+  startBrokerLogin,
+} from "./oauth.js";
 import { appendAuditLog } from "../utils/auditLog.js";
 import { getSessionContext } from "../utils/sessionContext.js";
 
@@ -53,6 +60,20 @@ export function registerAuthTools(server: McpServer): void {
       if (ctx) {
         // HTTP mode: return a URL for the user to visit in their browser
         try {
+          if (isBrokerMode()) {
+            const codeVerifier = generateCodeVerifier();
+            const codeChallenge = deriveCodeChallenge(codeVerifier);
+            const { sessionId: brokerSessionId, authorizeUrl } = await startBrokerLogin(codeChallenge);
+            ctx.setPendingBrokerSession({ brokerSessionId, codeVerifier });
+            await appendAuditLog({ tool: "authenticate", args: {}, outcome: "success" });
+            return {
+              content: [{
+                type: "text",
+                text: `Please authenticate by visiting this URL:\n\n${authorizeUrl}\n\nAfter completing login in your browser, return here and call any Clio tool.`,
+              }],
+            };
+          }
+
           const { url, nonce } = buildAuthorizationUrl(ctx.sessionId);
           ctx.setPendingNonce(nonce);
           await appendAuditLog({ tool: "authenticate", args: {}, outcome: "success" });
@@ -99,6 +120,7 @@ export function registerAuthTools(server: McpServer): void {
           : (await loadTokens())?.clio_user_id;
         if (ctx) {
           ctx.clearTokens();
+          ctx.setPendingBrokerSession(null);
         } else {
           await clearTokens();
         }

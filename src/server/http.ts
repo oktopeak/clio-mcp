@@ -18,16 +18,25 @@ import { registerBillingTools } from "../tools/billing.js";
 import { registerNoteTools } from "../tools/notes.js";
 import { registerUserTools } from "../tools/users.js";
 import { registerAuditExportTool } from "../tools/auditExport.js";
-import { buildAuthorizationUrl, exchangeCodeForTokensPure, refreshTokensPure } from "../auth/oauth.js";
+import {
+  exchangeCodeForTokensPure,
+  refreshTokensPure,
+  isBrokerMode,
+  getBrokerUrl,
+  pollBrokerOnce,
+  refreshTokensViaBroker,
+  resolveClioUserId,
+} from "../auth/oauth.js";
 import type { ClioTokens } from "../auth/oauth.js";
-import { sessionStorage, SessionContext } from "../utils/sessionContext.js";
+import { sessionStorage, SessionContext, PendingBrokerSession } from "../utils/sessionContext.js";
 import { appendAuditLog } from "../utils/auditLog.js";
 
-interface SessionRecord {
+export interface SessionRecord {
   transport: StreamableHTTPServerTransport;
   mcpServer: McpServer | null;
   tokens: ClioTokens | null;
   pendingOAuthNonce: string | null;
+  pendingBroker: PendingBrokerSession | null;
   createdAt: number;
 }
 
@@ -50,26 +59,67 @@ function createMcpServer(): McpServer {
   return server;
 }
 
-function buildSessionContext(record: SessionRecord, sessionId: string): SessionContext {
+async function pollPendingBrokerSession(record: SessionRecord): Promise<void> {
+  const pending = record.pendingBroker;
+  if (!pending) return;
+
+  let result;
+  try {
+    result = await pollBrokerOnce(getBrokerUrl(), pending.brokerSessionId, pending.codeVerifier);
+  } catch (err: any) {
+    // Broker session is dead (expired/forged/already consumed) — clear it so
+    // the firm gets a clean "call authenticate again" path instead of
+    // retrying a session that can never succeed.
+    record.pendingBroker = null;
+    throw err;
+  }
+
+  if (result.status === "pending") {
+    throw new Error(
+      "Login is still in progress. Finish the Clio login in your browser, then try again."
+    );
+  }
+
+  record.pendingBroker = null;
+  record.tokens = result.tokens;
+  await resolveClioUserId(record.tokens);
+
+  await appendAuditLog({
+    tool: "oauth_callback",
+    args: {},
+    outcome: "success",
+    clio_user_id: record.tokens.clio_user_id,
+  });
+}
+
+export function buildSessionContext(record: SessionRecord, sessionId: string): SessionContext {
   return {
     sessionId,
     getAccessToken: async () => {
       if (!record.tokens) {
-        throw new Error(
-          "Not authenticated. Call the 'authenticate' tool to get a login URL, " +
-          "complete OAuth in your browser, then try again."
-        );
+        if (isBrokerMode() && record.pendingBroker) {
+          await pollPendingBrokerSession(record);
+        } else {
+          throw new Error(
+            "Not authenticated. Call the 'authenticate' tool to get a login URL, " +
+            "complete OAuth in your browser, then try again."
+          );
+        }
       }
-      if (Date.now() > record.tokens.expires_at - 5 * 60 * 1000) {
-        const refreshed = await refreshTokensPure(record.tokens.refresh_token);
+      if (record.tokens && Date.now() > record.tokens.expires_at - 5 * 60 * 1000) {
+        const refreshed = isBrokerMode()
+          ? await refreshTokensViaBroker(record.tokens.refresh_token)
+          : await refreshTokensPure(record.tokens.refresh_token);
         record.tokens = { ...refreshed, clio_user_id: record.tokens.clio_user_id };
       }
-      return record.tokens.access_token;
+      return record.tokens!.access_token;
     },
     storeTokens: (tokens: ClioTokens) => { record.tokens = tokens; },
     getTokens: () => record.tokens,
     clearTokens: () => { record.tokens = null; },
     setPendingNonce: (nonce: string) => { record.pendingOAuthNonce = nonce; },
+    setPendingBrokerSession: (session: PendingBrokerSession | null) => { record.pendingBroker = session; },
+    getPendingBrokerSession: () => record.pendingBroker,
   };
 }
 
@@ -116,6 +166,7 @@ app.all("/mcp", requireApiKey, express.json(), async (req, res) => {
         mcpServer: null,
         tokens: null,
         pendingOAuthNonce: null,
+        pendingBroker: null,
         createdAt: Date.now(),
       };
 
@@ -141,6 +192,8 @@ app.all("/mcp", requireApiKey, express.json(), async (req, res) => {
         getTokens: () => null,
         clearTokens: () => {},
         setPendingNonce: () => {},
+        setPendingBrokerSession: () => {},
+        getPendingBrokerSession: () => null,
       };
 
       await sessionStorage.run(tempCtx, () =>
@@ -216,19 +269,7 @@ app.get("/oauth/callback", async (req, res) => {
   try {
     const redirectUri = `${(process.env.MCP_BASE_URL ?? "").trim()}/oauth/callback`;
     const tokens = await exchangeCodeForTokensPure(code, redirectUri);
-
-    // Attempt to resolve clio_user_id from who_am_i
-    try {
-      const region = (process.env.CLIO_REGION ?? "us").toLowerCase();
-      const clioBase = region === "eu" ? "https://eu.app.clio.com" : "https://app.clio.com";
-      const meRes = await fetch(`${clioBase}/api/v4/users/who_am_i.json`, {
-        headers: { Authorization: `Bearer ${tokens.access_token}` },
-      });
-      if (meRes.ok) {
-        const me = await meRes.json() as any;
-        tokens.clio_user_id = String(me.data?.id);
-      }
-    } catch { /* non-fatal */ }
+    await resolveClioUserId(tokens);
 
     record.tokens = tokens;
 
