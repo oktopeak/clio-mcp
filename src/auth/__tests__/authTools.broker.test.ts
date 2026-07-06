@@ -25,7 +25,7 @@ const {
 }));
 
 vi.mock("../../utils/sessionContext.js", () => ({
-  getSessionContext: mockGetSessionContext,
+  requireSessionContext: mockGetSessionContext,
 }));
 
 vi.mock("../../utils/auditLog.js", () => ({

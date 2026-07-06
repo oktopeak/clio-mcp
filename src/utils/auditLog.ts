@@ -3,7 +3,7 @@ import path from "path";
 import os from "os";
 import { randomUUID } from "crypto";
 import { loadTokens } from "../auth/tokenStorage.js";
-import { getSessionContext } from "./sessionContext.js";
+import { requireSessionContext } from "./sessionContext.js";
 
 const STDIO_SESSION_ID = randomUUID();
 
@@ -70,7 +70,7 @@ export async function appendAuditLog(
   try {
     await fs.mkdir(AUDIT_DIR, { recursive: true });
 
-    const ctx = getSessionContext();
+    const ctx = requireSessionContext();
     const session_id = ctx?.sessionId ?? STDIO_SESSION_ID;
 
     let clio_user_id = entry.clio_user_id;

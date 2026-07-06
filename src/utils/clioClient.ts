@@ -1,8 +1,8 @@
 import { getValidAccessToken } from "../auth/oauth.js";
-import { getSessionContext } from "./sessionContext.js";
+import { requireSessionContext } from "./sessionContext.js";
 
 async function resolveAccessToken(): Promise<string> {
-  const ctx = getSessionContext();
+  const ctx = requireSessionContext();
   if (ctx) return ctx.getAccessToken();
   return getValidAccessToken();
 }

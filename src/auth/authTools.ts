@@ -9,15 +9,24 @@ import {
   startBrokerLogin,
 } from "./oauth.js";
 import { appendAuditLog } from "../utils/auditLog.js";
-import { getSessionContext } from "../utils/sessionContext.js";
+import { requireSessionContext } from "../utils/sessionContext.js";
 
 export function registerAuthTools(server: McpServer): void {
   server.registerTool(
     "auth_status",
     { description: "Check whether the connector is authenticated with Clio and when the token expires" },
     async () => {
-      const ctx = getSessionContext();
-      const tokens = ctx ? ctx.getTokens() : await loadTokens();
+      const ctx = requireSessionContext();
+      let tokens = ctx ? ctx.getTokens() : await loadTokens();
+
+      if (ctx && !tokens && ctx.getPendingBrokerSession()) {
+        try {
+          await ctx.getAccessToken();
+        } catch {
+          // still pending, or the broker session died — fall through to unauthenticated below
+        }
+        tokens = ctx.getTokens();
+      }
 
       await appendAuditLog({
         tool: "auth_status",
@@ -56,7 +65,7 @@ export function registerAuthTools(server: McpServer): void {
     "authenticate",
     { description: "Trigger the Clio OAuth login flow" },
     async () => {
-      const ctx = getSessionContext();
+      const ctx = requireSessionContext();
       if (ctx) {
         // HTTP mode: return a URL for the user to visit in their browser
         try {
@@ -113,7 +122,7 @@ export function registerAuthTools(server: McpServer): void {
     "logout",
     { description: "Log out of Clio (clears local tokens)" },
     async () => {
-      const ctx = getSessionContext();
+      const ctx = requireSessionContext();
       try {
         const clio_user_id = ctx
           ? ctx.getTokens()?.clio_user_id

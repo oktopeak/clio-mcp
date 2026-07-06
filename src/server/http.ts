@@ -38,6 +38,7 @@ export interface SessionRecord {
   pendingOAuthNonce: string | null;
   pendingBroker: PendingBrokerSession | null;
   createdAt: number;
+  refreshInFlight: Promise<string> | null;
 }
 
 const sessions = new Map<string, SessionRecord>();
@@ -92,27 +93,41 @@ async function pollPendingBrokerSession(record: SessionRecord): Promise<void> {
   });
 }
 
+async function doGetAccessToken(record: SessionRecord): Promise<string> {
+  if (!record.tokens) {
+    if (isBrokerMode() && record.pendingBroker) {
+      await pollPendingBrokerSession(record);
+    } else {
+      throw new Error(
+        "Not authenticated. Call the 'authenticate' tool to get a login URL, " +
+        "complete OAuth in your browser, then try again."
+      );
+    }
+  }
+  if (record.tokens && Date.now() > record.tokens.expires_at - 5 * 60 * 1000) {
+    const refreshed = isBrokerMode()
+      ? await refreshTokensViaBroker(record.tokens.refresh_token)
+      : await refreshTokensPure(record.tokens.refresh_token);
+    record.tokens = { ...refreshed, clio_user_id: record.tokens.clio_user_id };
+  }
+  return record.tokens!.access_token;
+}
+
 export function buildSessionContext(record: SessionRecord, sessionId: string): SessionContext {
   return {
     sessionId,
+    // Concurrent calls within the same session await the same in-flight
+    // refresh instead of racing (see doGetValidAccessToken in oauth.ts for
+    // the same pattern in stdio mode). Different sessions are unaffected —
+    // each SessionRecord has its own refreshInFlight slot.
     getAccessToken: async () => {
-      if (!record.tokens) {
-        if (isBrokerMode() && record.pendingBroker) {
-          await pollPendingBrokerSession(record);
-        } else {
-          throw new Error(
-            "Not authenticated. Call the 'authenticate' tool to get a login URL, " +
-            "complete OAuth in your browser, then try again."
-          );
-        }
+      if (record.refreshInFlight) return record.refreshInFlight;
+      record.refreshInFlight = doGetAccessToken(record);
+      try {
+        return await record.refreshInFlight;
+      } finally {
+        record.refreshInFlight = null;
       }
-      if (record.tokens && Date.now() > record.tokens.expires_at - 5 * 60 * 1000) {
-        const refreshed = isBrokerMode()
-          ? await refreshTokensViaBroker(record.tokens.refresh_token)
-          : await refreshTokensPure(record.tokens.refresh_token);
-        record.tokens = { ...refreshed, clio_user_id: record.tokens.clio_user_id };
-      }
-      return record.tokens!.access_token;
     },
     storeTokens: (tokens: ClioTokens) => { record.tokens = tokens; },
     getTokens: () => record.tokens,
@@ -168,6 +183,7 @@ app.all("/mcp", requireApiKey, express.json(), async (req, res) => {
         pendingOAuthNonce: null,
         pendingBroker: null,
         createdAt: Date.now(),
+        refreshInFlight: null,
       };
 
       const transport = new StreamableHTTPServerTransport({

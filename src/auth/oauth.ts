@@ -360,7 +360,23 @@ export async function refreshTokensPure(refreshToken: string): Promise<ClioToken
   };
 }
 
+let inFlightAccessToken: Promise<string> | null = null;
+
+// Concurrent callers await the same in-flight refresh instead of racing —
+// otherwise two overlapping calls can both refresh, and since Clio may
+// rotate the refresh token on use, the loser's saveTokens() can stomp the
+// winner's and discard the only valid refresh token.
 export async function getValidAccessToken(): Promise<string> {
+  if (inFlightAccessToken) return inFlightAccessToken;
+  inFlightAccessToken = doGetValidAccessToken();
+  try {
+    return await inFlightAccessToken;
+  } finally {
+    inFlightAccessToken = null;
+  }
+}
+
+async function doGetValidAccessToken(): Promise<string> {
   let tokens = await loadTokens();
 
   if (!tokens) {

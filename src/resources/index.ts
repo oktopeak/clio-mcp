@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { loadTokens } from "../auth/tokenStorage.js";
-import { getSessionContext } from "../utils/sessionContext.js";
+import { requireSessionContext } from "../utils/sessionContext.js";
 
 export function registerResources(server: McpServer): void {
   server.registerResource(
@@ -28,8 +28,18 @@ export function registerResources(server: McpServer): void {
       mimeType: "application/json",
     },
     async (uri) => {
-      const ctx = getSessionContext();
-      const tokens = ctx ? ctx.getTokens() : await loadTokens();
+      const ctx = requireSessionContext();
+      let tokens = ctx ? ctx.getTokens() : await loadTokens();
+
+      if (ctx && !tokens && ctx.getPendingBrokerSession()) {
+        try {
+          await ctx.getAccessToken();
+        } catch {
+          // still pending, or the broker session died — fall through to unauthenticated below
+        }
+        tokens = ctx.getTokens();
+      }
+
       const payload = tokens
         ? {
           authenticated: true,
