@@ -9,6 +9,19 @@ const MATTER_LIST_FIELDS =
 const MATTER_DETAIL_FIELDS =
   "id,display_number,description,status,client{id,name},practice_area{id,name},open_date,close_date,billable";
 
+// Matches Clio's own matters.json date-filter syntax: an operator (>, >=, =, <=, <)
+// immediately followed by a YYYY-MM-DD date, e.g. ">=2026-01-01" or "=2026-03-15".
+const DATE_FILTER_REGEX = /^(>=|<=|>|<|=)\d{4}-\d{2}-\d{2}$/;
+const dateFilterSchema = z
+  .array(
+    z
+      .string()
+      .regex(DATE_FILTER_REGEX, "Each entry must be an operator (>, >=, =, <=, <) directly followed by a date, e.g. '>=2026-01-01'")
+  )
+  .min(1)
+  .max(2)
+  .optional();
+
 export function registerMatterTools(server: McpServer): void {
   server.registerTool(
     "list_matters",
@@ -16,21 +29,35 @@ export function registerMatterTools(server: McpServer): void {
       description: "List matters from the connected Clio account",
       inputSchema: {
         status: z.enum(["open", "pending", "closed"]).optional().describe("Filter by matter status"),
+        date_opened: dateFilterSchema.describe(
+          "Filter by matter open date, using Clio's operator syntax. 1-2 entries, each an operator (>, >=, =, <=, <) directly followed by YYYY-MM-DD. " +
+            "E.g. ['>=2026-01-01', '<=2026-06-30'] for a range, or ['=2026-03-15'] for an exact date."
+        ),
+        date_closed: dateFilterSchema.describe(
+          "Filter by matter close date, using the same operator syntax as date_opened."
+        ),
         limit: z.number().int().min(1).max(200).default(25).describe("Max results to return (1-200)"),
       },
     },
-    async ({ status, limit }) => {
+    async ({ status, date_opened, date_closed, limit }) => {
       try {
-        const params: Record<string, string> = {
+        const params: Record<string, string | string[]> = {
           fields: MATTER_LIST_FIELDS,
           limit: String(limit),
         };
         if (status) params["status"] = status;
+        if (date_opened?.length) params["open_date[]"] = date_opened;
+        if (date_closed?.length) params["close_date[]"] = date_closed;
 
         const data = await clioGet("/matters.json", params);
         const matters = data.data as any[];
 
-        await appendAuditLog({ tool: "list_matters", args: { status, limit }, outcome: "success", result_count: matters?.length ?? 0 });
+        await appendAuditLog({
+          tool: "list_matters",
+          args: { status, date_opened, date_closed, limit },
+          outcome: "success",
+          result_count: matters?.length ?? 0,
+        });
 
         if (!matters || matters.length === 0) {
           return { content: [{ type: "text", text: "No matters found." }] };
@@ -51,7 +78,7 @@ export function registerMatterTools(server: McpServer): void {
           content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
         };
       } catch (err: any) {
-        await appendAuditLog({ tool: "list_matters", args: { status, limit }, outcome: "error", error_message: err.message });
+        await appendAuditLog({ tool: "list_matters", args: { status, date_opened, date_closed, limit }, outcome: "error", error_message: err.message });
         return {
           content: [{ type: "text", text: `Error: ${err.message}` }],
           isError: true,

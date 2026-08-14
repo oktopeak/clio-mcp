@@ -30,9 +30,11 @@ vi.mock("../../utils/auditLog.js", () => ({
 import { registerMatterTools } from "../matters.js";
 
 const handlers: Record<string, Function> = {};
+const schemas: Record<string, any> = {};
 const fakeServer = {
-  registerTool: vi.fn((name: string, _schema: any, handler: Function) => {
+  registerTool: vi.fn((name: string, schema: any, handler: Function) => {
     handlers[name] = handler;
+    schemas[name] = schema;
   }),
 };
 
@@ -205,6 +207,162 @@ describe("create_matter", () => {
       const result = await handlers["create_matter"](MIN_ARGS) as any;
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toMatch(/^Error:/);
+    });
+  });
+});
+
+describe("list_matters", () => {
+  const MOCK_LIST_MATTER = {
+    id: 42,
+    display_number: "00042-001",
+    description: "Test matter",
+    status: "open",
+    client: { id: 1, name: "Acme Corp" },
+    practice_area: { id: 3, name: "Corporate" },
+    open_date: "2026-03-15",
+    close_date: null,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockClioGet.mockResolvedValue({ data: [MOCK_LIST_MATTER] });
+  });
+
+  // ─── Request param mapping ────────────────────────────────────────────────
+
+  describe("request param mapping", () => {
+    it("sends fields and limit with no filters, and omits date/status params", async () => {
+      await handlers["list_matters"]({ limit: 25 });
+      const [path, params] = mockClioGet.mock.calls[0] as [string, any];
+      expect(path).toBe("/matters.json");
+      expect(params.limit).toBe("25");
+      expect(params).not.toHaveProperty("status");
+      expect(params).not.toHaveProperty("open_date[]");
+      expect(params).not.toHaveProperty("close_date[]");
+    });
+
+    it("sends status when provided", async () => {
+      await handlers["list_matters"]({ status: "closed", limit: 25 });
+      const params = mockClioGet.mock.calls[0][1] as any;
+      expect(params.status).toBe("closed");
+    });
+
+    it("sends open_date[] as an array when date_opened is provided", async () => {
+      await handlers["list_matters"]({ date_opened: [">=2026-01-01", "<=2026-06-30"], limit: 25 });
+      const params = mockClioGet.mock.calls[0][1] as any;
+      expect(params["open_date[]"]).toEqual([">=2026-01-01", "<=2026-06-30"]);
+    });
+
+    it("sends close_date[] as an array when date_closed is provided", async () => {
+      await handlers["list_matters"]({ date_closed: ["=2026-03-15"], limit: 25 });
+      const params = mockClioGet.mock.calls[0][1] as any;
+      expect(params["close_date[]"]).toEqual(["=2026-03-15"]);
+    });
+
+    it("sends both open_date[] and close_date[] when both are provided", async () => {
+      await handlers["list_matters"]({
+        date_opened: [">=2026-01-01"],
+        date_closed: ["<=2026-12-31"],
+        limit: 25,
+      });
+      const params = mockClioGet.mock.calls[0][1] as any;
+      expect(params["open_date[]"]).toEqual([">=2026-01-01"]);
+      expect(params["close_date[]"]).toEqual(["<=2026-12-31"]);
+    });
+  });
+
+  // ─── Result shape ─────────────────────────────────────────────────────────
+
+  describe("result shape", () => {
+    it("returns a 'No matters found.' message when the result set is empty", async () => {
+      mockClioGet.mockResolvedValue({ data: [] });
+      const result = await handlers["list_matters"]({ limit: 25 }) as any;
+      expect(result.content[0].text).toBe("No matters found.");
+    });
+
+    it("maps open_date and close_date through to the result", async () => {
+      const result = await handlers["list_matters"]({ limit: 25 }) as any;
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed[0].open_date).toBe("2026-03-15");
+      expect(parsed[0].close_date).toBeNull();
+    });
+  });
+
+  // ─── Audit log ───────────────────────────────────────────────────────────
+
+  describe("audit log", () => {
+    it("logs date_opened and date_closed args on success", async () => {
+      await handlers["list_matters"]({ date_opened: [">=2026-01-01"], date_closed: ["<=2026-12-31"], limit: 25 });
+      expect(mockAppendAuditLog).toHaveBeenCalledWith(
+        expect.objectContaining({
+          outcome: "success",
+          args: expect.objectContaining({ date_opened: [">=2026-01-01"], date_closed: ["<=2026-12-31"] }),
+        }),
+      );
+    });
+
+    it("logs date_opened and date_closed args on error", async () => {
+      mockClioGet.mockRejectedValue(new Error("network failure"));
+      await handlers["list_matters"]({ date_opened: [">=2026-01-01"], limit: 25 });
+      expect(mockAppendAuditLog).toHaveBeenCalledWith(
+        expect.objectContaining({
+          outcome: "error",
+          args: expect.objectContaining({ date_opened: [">=2026-01-01"] }),
+        }),
+      );
+    });
+  });
+
+  // ─── date_opened / date_closed schema validation ──────────────────────────
+
+  describe.each([
+    ["date_opened"],
+    ["date_closed"],
+  ])("%s schema validation", (field) => {
+    it("accepts a valid two-sided range", () => {
+      const result = schemas["list_matters"].inputSchema[field].safeParse([">=2026-01-01", "<=2026-06-30"]);
+      expect(result.success).toBe(true);
+    });
+
+    it("accepts a single exact-match entry", () => {
+      const result = schemas["list_matters"].inputSchema[field].safeParse(["=2026-03-15"]);
+      expect(result.success).toBe(true);
+    });
+
+    it("accepts each supported operator", () => {
+      for (const op of [">", ">=", "=", "<=", "<"]) {
+        const result = schemas["list_matters"].inputSchema[field].safeParse([`${op}2026-03-15`]);
+        expect(result.success).toBe(true);
+      }
+    });
+
+    it("rejects an entry with no operator", () => {
+      const result = schemas["list_matters"].inputSchema[field].safeParse(["2026-01-01"]);
+      expect(result.success).toBe(false);
+    });
+
+    it("rejects a malformed date", () => {
+      const result = schemas["list_matters"].inputSchema[field].safeParse([">=01-01-2026"]);
+      expect(result.success).toBe(false);
+    });
+
+    it("rejects more than 2 entries", () => {
+      const result = schemas["list_matters"].inputSchema[field].safeParse([
+        ">=2026-01-01",
+        "<=2026-06-30",
+        "=2026-03-01",
+      ]);
+      expect(result.success).toBe(false);
+    });
+
+    it("rejects an empty array", () => {
+      const result = schemas["list_matters"].inputSchema[field].safeParse([]);
+      expect(result.success).toBe(false);
+    });
+
+    it("is optional (undefined is valid)", () => {
+      const result = schemas["list_matters"].inputSchema[field].safeParse(undefined);
+      expect(result.success).toBe(true);
     });
   });
 });

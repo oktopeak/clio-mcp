@@ -343,7 +343,7 @@ Claude selects and calls these tools automatically based on your questions. You 
 
 | Tool | Inputs | What it does |
 |---|---|---|
-| `list_matters` | `status` (open/pending/closed), `limit` | Lists matters with optional status filter |
+| `list_matters` | `status` (open/pending/closed), `date_opened`, `date_closed`, `limit` | Lists matters with optional status and open/close date-range filters (Clio operator syntax, e.g. `[">=2026-01-01", "<=2026-06-30"]`) |
 | `get_matter` | `matter_id` | Returns full detail for a specific matter |
 | `create_matter` | `client_id`, `description`, `status`, `open_date`, `practice_area_id`, `billable`, `responsible_attorney_id`, `originating_attorney_id`, `client_reference` | Creates a new matter; status defaults to Open, billable defaults to true |
 

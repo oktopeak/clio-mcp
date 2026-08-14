@@ -68,11 +68,17 @@ async function clioFetch(url: string, init: RequestInit): Promise<Response> {
   throw new Error("clioFetch: unexpected loop exit");
 }
 
-export async function clioGet(path: string, params?: Record<string, string>): Promise<any> {
+export async function clioGet(path: string, params?: Record<string, string | string[]>): Promise<any> {
   const token = await resolveAccessToken();
   const url = new URL(`${getBase()}${path}`);
   if (params) {
-    for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+    for (const [k, v] of Object.entries(params)) {
+      if (Array.isArray(v)) {
+        for (const item of v) url.searchParams.append(k, item);
+      } else {
+        url.searchParams.set(k, v);
+      }
+    }
   }
   const res = await clioFetch(url.toString(), {
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
