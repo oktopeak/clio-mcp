@@ -1,20 +1,20 @@
 # Clio MCP Server: Connect Claude to Clio Practice Management
 
-> ### Built by [Oktopeak](https://oktopeak.com/?utm_source=github&utm_medium=readme&utm_campaign=clio-mcp&utm_content=top-byline) — AI transformation & automation for law firms
-> **Digital transformation for legal and healthcare businesses.** We build AI integrations, workflow automation, and custom software your firm owns outright — including this connector. → [Book a 30-min call](https://calendly.com/office-oktopeak/30min?utm_source=github&utm_medium=readme&utm_campaign=clio-mcp&utm_content=top-byline-call)
+> ### Built by [Oktopeak](https://oktopeak.com/?utm_source=github&utm_medium=readme&utm_campaign=clio-mcp&utm_content=top-byline): AI transformation & automation for law firms
+> **Digital transformation for legal and healthcare businesses.** We build AI integrations, workflow automation, and custom software your firm owns outright, including this connector. → [Book a 30-min call](https://calendly.com/office-oktopeak/30min?utm_source=github&utm_medium=readme&utm_campaign=clio-mcp&utm_content=top-byline-call)
 
-Open-source Model Context Protocol (MCP) connector that lets Claude read live data from [Clio](https://www.clio.com) — matters, contacts, documents, tasks, calendar, and billing — without copying client information into chat windows. Built for law firms that care about attorney-client privilege, ABA Opinion 512 compliance, and keeping AI workflows inside their existing practice management stack.
+Open-source Model Context Protocol (MCP) connector that lets Claude read live data from [Clio](https://www.clio.com) (matters, contacts, documents, tasks, calendar, and billing) without copying client information into chat windows. Built for law firms that care about attorney-client privilege, ABA Opinion 512 compliance, and keeping AI workflows inside their existing practice management stack.
 
-> **TL;DR** — 26 Clio tools exposed to Claude across stdio and HTTP/SSE transports. Audit-logged for ABA Opinion 512. OAuth tokens encrypted at rest with AES-256-GCM. Local-only — no relay server, no cloud middleman. MIT license, free forever.
+> **TL;DR:** 26 Clio tools exposed to Claude across stdio and HTTP/SSE transports. Audit-logged for ABA Opinion 512. OAuth tokens encrypted at rest with AES-256-GCM. Local-only: no relay server, no cloud middleman. MIT license, free forever.
 
 **Who this is for:** Law firm IT, legal operations teams, tech-forward partners, and engineers at legal tech companies. If you can follow a five-step terminal install, you can use this.
 
 > [!TIP]
 > **Not a developer? You don't need to be.**
 >
-> The README below assumes someone comfortable editing a JSON config file. If that's not you or your team, we deploy this for law firms — scoped credentials, audit log wired in, one custom workflow, training. A simpler one-command installer is also planned for v0.2.
+> The README below assumes someone comfortable editing a JSON config file. If that's not you or your team, we deploy this for law firms: scoped credentials, audit log wired in, one custom workflow, training. A simpler one-command installer is also planned for v0.2.
 >
-> → **[See Guided MCP Setup](https://oktopeak.com/services/mcp-guided-setup/?utm_source=github&utm_medium=readme&utm_campaign=clio-mcp&utm_content=top-tip-svc)** — or [book a 30-min call](https://calendly.com/office-oktopeak/30min?utm_source=github&utm_medium=readme&utm_campaign=clio-mcp&utm_content=top-tip-call)
+> → **[See Guided MCP Setup](https://oktopeak.com/services/mcp-guided-setup/?utm_source=github&utm_medium=readme&utm_campaign=clio-mcp&utm_content=top-tip-svc)**, or [book a 30-min call](https://calendly.com/office-oktopeak/30min?utm_source=github&utm_medium=readme&utm_campaign=clio-mcp&utm_content=top-tip-call)
 
 **Jump to:** [Demo](#demo) · [Setup](#setup) · [Available tools](#available-tools) · [Security & compliance](#compliance--security) · [Need it deployed for you?](#need-more-than-the-connector)
 
@@ -22,11 +22,11 @@ Open-source Model Context Protocol (MCP) connector that lets Claude read live da
 
 ## Demo
 
-Watch Claude pull live data from Clio in under a minute — matters, contacts, tasks — without copying client information into chat.
+Watch Claude pull live data from Clio in under a minute (matters, contacts, tasks) without copying client information into chat.
 
 <p align="center">
   <a href="https://youtu.be/RmB0iGyJ9cs">
-    <img src="docs/demo-thumbnail.png" alt="Clio MCP — Claude pulls live data" width="640">
+    <img src="docs/demo-thumbnail.png" alt="Clio MCP: Claude pulls live data" width="640">
   </a>
   <br><br>
   <a href="https://youtu.be/RmB0iGyJ9cs"><b>▶&nbsp;&nbsp;Watch the 60-second demo on YouTube</b></a>
@@ -36,7 +36,7 @@ Watch Claude pull live data from Clio in under a minute — matters, contacts, t
 
 **Setup tips + ABA Opinion 512 compliance updates for firms building with Claude + Clio.**
 
-→ [Subscribe to Oktopeak Builder Notes](https://tally.so/r/q4kzk9?source=clio-readme) — short emails, easy unsubscribe.
+→ [Subscribe to Oktopeak Builder Notes](https://tally.so/r/q4kzk9?source=clio-readme). Short emails, easy unsubscribe.
 
 ---
 
@@ -44,23 +44,23 @@ Watch Claude pull live data from Clio in under a minute — matters, contacts, t
 
 This section exists because law firms evaluating AI tools have asked the right questions. Here are direct answers.
 
-### ABA Formal Opinion 512 — AI and competence
+### ABA Formal Opinion 512: AI and competence
 
 ABA Opinion 512 (2023) requires attorneys using AI tools to understand how those tools work, supervise their outputs, and maintain confidentiality of client information. This connector is designed with those obligations in mind:
 
-- **Audit log.** Every tool call — every time Claude queries Clio on your behalf — is appended to a local log file at `~/.clio-mcp/audit.log`. Each entry records the timestamp, which tool was invoked, what arguments were passed, whether it succeeded, and the Clio user ID. The log is stored on your machine, not in any cloud service. It is append-only and never purged by the software, so your firm retains a complete record of AI-initiated data access.
+- **Audit log.** Every tool call (every time Claude queries Clio on your behalf) is appended to a local log file at `~/.clio-mcp/audit.log`. Each entry records the timestamp, which tool was invoked, what arguments were passed, whether it succeeded, and the Clio user ID. The log is stored on your machine, not in any cloud service. It is append-only and never purged by the software, so your firm retains a complete record of AI-initiated data access.
 
 - **No data retention by the connector.** The connector does not store matter data, client names, or any Clio content. It fetches from the API and passes results to Claude. The only thing persisted locally is your authentication token, and that is encrypted (see below).
 
-- **Scope limited to tasks, notes, and document uploads.** The connector can create tasks and notes on matters, and upload documents to matters. It cannot create, edit, or delete matters, contacts, calendar entries, or billing records. This is a deliberate v1 design choice — write access is limited to the operations most useful for AI-assisted legal work while minimising liability.
+- **Scope limited to tasks, notes, and document uploads.** The connector can create tasks and notes on matters, and upload documents to matters. It cannot create, edit, or delete matters, contacts, calendar entries, or billing records. This is a deliberate v1 design choice: write access is limited to the operations most useful for AI-assisted legal work while minimising liability.
 
-### Token security — encryption at rest
+### Token security: encryption at rest
 
-Your OAuth credentials are never stored in plain text. After you authenticate, the connector encrypts your access token and refresh token using **AES-256-GCM** — the same standard used by financial institutions — and writes the ciphertext to `~/.clio-mcp/tokens.enc`. The encryption key is auto-generated on first run and stored in your OS keychain (macOS Keychain, Windows Credential Manager, or Linux Secret Service) — never on the filesystem in plaintext.
+Your OAuth credentials are never stored in plain text. After you authenticate, the connector encrypts your access token and refresh token using **AES-256-GCM**, the same standard used by financial institutions, and writes the ciphertext to `~/.clio-mcp/tokens.enc`. The encryption key is auto-generated on first run and stored in your OS keychain (macOS Keychain, Windows Credential Manager, or Linux Secret Service), never on the filesystem in plaintext.
 
 If someone obtained the token file without the key, they would not be able to read it.
 
-### OAuth 2.0 — no passwords stored
+### OAuth 2.0: no passwords stored
 
 Authentication uses Clio's standard OAuth 2.0 flow. You log in through your browser on Clio's own login page. The connector never sees or handles your Clio password. CSRF protection is implemented via a cryptographic state parameter on every auth request.
 
@@ -78,22 +78,24 @@ Three questions practitioners evaluating an AI tool for sensitive legal work sho
 
 The connector secures the transport between Clio and Claude. It does NOT change what Claude itself does with data once data enters a conversation. **Claude's data handling depends on the tier you use, not on this connector.**
 
-- **Claude Enterprise / Team** — explicit no-training guarantees, optional zero-data-retention (ZDR). **This is the tier we recommend for any work involving privileged client data.**
-- **Claude API with ZDR** — for firms with engineering resources who want full control. Same no-training, no-retention guarantees.
-- **Claude Pro / Max (consumer)** — Anthropic does not train on consumer chat data by default and human review for safety is limited. Acceptable for non-privileged exploration. **Not a substitute for an enterprise deployment when handling client matter data.**
+- **Anthropic API with zero-data-retention (ZDR)**: no-training, no-retention terms, enabled at the organization level on the Anthropic API. A small firm can obtain it; it is not reserved for large enterprise contracts. **This is the configuration we recommend for any work involving privileged client data.**
+- **Claude Enterprise / Team**: explicit no-training guarantees, with ZDR available as an option. One way to get the configuration above, suited to firms that want a managed workspace rather than an API integration. Claude Enterprise is one option, not the only one.
+- **Claude Pro / Max (consumer)**: Anthropic does not train on consumer chat data by default and human review for safety is limited. Acceptable for non-privileged exploration. **Not a substitute for a zero-data-retention deployment when handling client matter data.**
 
-If you are deploying this connector at a firm, pair it with Claude Enterprise (or API + ZDR). If you are an individual lawyer testing it on personal or non-privileged data, Claude Pro is reasonable for the testing phase but should not become the long-term setup for client work.
+If you are deploying this connector at a firm, pair it with a zero-data-retention configuration (the Anthropic API with ZDR at the organization level, or Claude Enterprise with ZDR). If you are an individual lawyer testing it on personal or non-privileged data, Claude Pro is reasonable for the testing phase but should not become the long-term setup for client work.
 
-### Access vs retention — the distinction most evaluations miss
+One caveat on model choice: the no-retention default is model-dependent. The newest and most capable model may require retention and opt-in review, so pin the model deliberately and re-check the retention terms on every vendor release.
+
+### Access vs retention: the distinction most evaluations miss
 
 A common assumption is that logging equals compliance: if there is a record of what was accessed, the firm is covered. That conflates two separate things, and the gap between them is where privileged content gets exposed.
 
-- **Retention** is what happens to the data *after* the request — whether it persists in training sets, vendor logs, or any system once the answer is returned.
-- **Access** is whether the model saw the matter content *at all* — even ephemerally, in-flight, only to produce its answer.
+- **Retention** is what happens to the data *after* the request: whether it persists in training sets, vendor logs, or any system once the answer is returned.
+- **Access** is whether the model saw the matter content *at all*, even ephemerally, in-flight, only to produce its answer.
 
-For privileged matter content, **access is the exposure.** The moment privileged content enters a conversation, the model has processed it, whether or not anything is retained afterward. No-retention and no-training guarantees constrain what happens to the data later; they do not undo the fact that it was seen, and the firm's audit log records only that access happened — not that it was permissible.
+For privileged matter content, **access is the exposure.** The moment privileged content enters a conversation, the model has processed it, whether or not anything is retained afterward. No-retention and no-training guarantees constrain what happens to the data later; they do not undo the fact that it was seen, and the firm's audit log records only that access happened, not that it was permissible.
 
-This is why tier choice is not optional for privileged work. **Zero-data-retention on Claude Enterprise is the only clean answer for anything touching privileged matter content** — it is the configuration where the content is processed under contractual no-training, no-retention terms rather than consumer ones. If the matter is privileged and you are not on Enterprise ZDR (or a local model — see below), assume the content has been exposed under terms your firm has not vetted.
+This is why tier choice is not optional for privileged work. **Zero-data-retention is the only clean answer for anything touching privileged matter content**, whether you obtain it on the Anthropic API at the organization level or through Claude Enterprise: it is the configuration where the content is processed under contractual no-training, no-retention terms rather than consumer ones. If the matter is privileged and you are not on a ZDR configuration (or a local model, see below), assume the content has been exposed under terms your firm has not vetted.
 
 The connector's own no-retention posture (it stores nothing but your encrypted token) covers the transport layer only. It says nothing about what the model tier does with content once that content enters the conversation. That second question is the one this section answers, and it is the one your firm has to answer before privileged data ever reaches Claude.
 
@@ -101,10 +103,10 @@ The connector's own no-retention posture (it stores nothing but your encrypted t
 
 The connector ships as `@oktopeak/clio-mcp` on npm. Like every npm package, the published version can be updated at any time by the maintainer. Standard hygiene applies:
 
-- **Pin versions in production.** Use `@oktopeak/clio-mcp@1.0.1` rather than `^1.0.0`. Audit before upgrading.
+- **Pin versions in production.** Use an exact version such as `@oktopeak/clio-mcp@2.0.1` (the current release in `package.json`) rather than a range like `^2.0.0`. Audit before upgrading.
 - **Review the diff.** Every release is a tagged commit on GitHub. Verify changes before pulling a new version into a firm-wide deployment.
 - **Build from source.** If your firm requires it, clone the repo, audit the code, run from your own build artifact. We do not gate any feature behind the npm distribution.
-- **Maintainers.** Published by [Oktopeak](https://oktopeak.com) — a public team with public commits and a public npm publisher account. Not anonymous. We respond to security reports at `office@oktopeak.com`.
+- **Maintainers.** Published by [Oktopeak](https://oktopeak.com), a public team with public commits and a public npm publisher account. Not anonymous. We respond to security reports at `office@oktopeak.com`.
 
 ### What is encrypted, what is not
 
@@ -112,17 +114,17 @@ To pre-empt a common misread:
 
 - **OAuth tokens** (your Clio access + refresh token) are encrypted with AES-256-GCM at rest in `~/.clio-mcp/tokens.enc`. They cannot be read without the encryption key.
 - **The encryption key itself** is auto-generated on first run and stored in the OS keychain (macOS Keychain, Windows Credential Manager, or Linux Secret Service). It never touches the filesystem in plaintext. For CI/headless installs without a keychain, you can override this by setting `ENCRYPTION_KEY` as a 64-character hex string in your environment.
-- **Audit log entries** at `~/.clio-mcp/audit.log` are not encrypted. They contain metadata (timestamps, tool names, parameters with secrets redacted) — not Clio content.
+- **Audit log entries** at `~/.clio-mcp/audit.log` are not encrypted. They contain metadata (timestamps, tool names, parameters with secrets redacted), not Clio content.
 
 ---
 
 ## Running with a local model (no third-party processor)
 
-After the SDNY ruling in [*United States v. Heppner*](https://harvardlawreview.org/blog/2026/03/united-states-v-heppner/) (Feb 2026) that consumer Claude is not protected by attorney-client privilege, some firms want a deployment with **no third-party AI processor at all** — model inference running entirely on the firm's own hardware.
+After the SDNY ruling in [*United States v. Heppner*](https://harvardlawreview.org/blog/2026/03/united-states-v-heppner/) (Feb 2026) that consumer Claude is not protected by attorney-client privilege, some firms want a deployment with **no third-party AI processor at all**: model inference running entirely on the firm's own hardware.
 
 This connector supports that out of the box. MCP is a protocol, not a Claude-specific feature. The same connector that talks to Claude Desktop also talks to:
 
-- **[LM Studio](https://lmstudio.ai)** running Llama 4 70B / DeepSeek V4 / Mistral Large locally — recommended primary path
+- **[LM Studio](https://lmstudio.ai)** running Llama 4 70B / DeepSeek V4 / Mistral Large locally (recommended primary path)
 - **[Continue.dev](https://continue.dev)** + [Ollama](https://ollama.com) + a bridge ([`mcphost`](https://github.com/mark3labs/mcphost) or [`ollama-mcp-bridge`](https://github.com/patruff/ollama-mcp-bridge))
 - Any other MCP-compatible client
 
@@ -138,12 +140,12 @@ Once connected, you can ask Claude things like:
 - *"Show me all open matters for Acme Corp"*
 - *"What's the status of matter 2024-0042?"*
 - *"List my pending matters from the last quarter"*
-- *"Open a new matter for Acme Corp — litigation, responsible attorney John Smith"*
+- *"Open a new matter for Acme Corp: litigation, responsible attorney John Smith"*
 
 **Contacts**
 - *"Find the contact details for Jane Smith"*
 - *"What's the email address and phone number for client ID 8821?"*
-- *"Show me all contacts matching 'Acme' — fetch the next page if there are more"*
+- *"Show me all contacts matching 'Acme', and fetch the next page if there are more"*
 
 **Documents**
 - *"List all documents on matter 4821"*
@@ -186,19 +188,19 @@ The connector retrieves live data from Clio on every request. Nothing is cached 
 
 Before you begin, make sure you have:
 
-- **Node.js 18 or later** — [nodejs.org/en/download](https://nodejs.org/en/download)
-- **Claude Desktop** — [claude.ai/download](https://claude.ai/download)
+- **Node.js 18 or later**: [nodejs.org/en/download](https://nodejs.org/en/download)
+- **Claude Desktop**: [claude.ai/download](https://claude.ai/download)
 - **A Clio account** with permission to create developer applications (ask your Clio administrator if you are unsure)
 
 ---
 
 ## Setup
 
-**5 steps. 10-15 minutes the first time.** You'll register a Clio Developer App, add one JSON block to your Claude Desktop config, and run an OAuth login. The encryption key is generated automatically — no manual key handling.
+**5 steps. 10-15 minutes the first time.** You'll register a Clio Developer App, add one JSON block to your Claude Desktop config, and run an OAuth login. The encryption key is generated automatically; no manual key handling.
 
-Before you run any of this in production, read the [Compliance & Security](#compliance--security) and [Trust Model](#trust-model) sections above. If you are deploying for a firm, pair the connector with Claude Enterprise or the Claude API with ZDR — see "Which Claude tier should we use?" above.
+Before you run any of this in production, read the [Compliance & Security](#compliance--security) and [Trust Model](#trust-model) sections above. If you are deploying for a firm, pair the connector with a zero-data-retention configuration (the Anthropic API with ZDR at the organization level, or Claude Enterprise); see "Which Claude tier should we use?" above.
 
-### Step 1 — Clone and build
+### Step 1: Clone and build
 
 Open a terminal and run:
 
@@ -209,7 +211,7 @@ npm install
 npm run build
 ```
 
-Note the full path to the folder you just cloned — you will need it in Step 3.
+Note the full path to the folder you just cloned; you will need it in Step 3.
 
 ```bash
 # On Mac/Linux, print the full path:
@@ -218,16 +220,16 @@ pwd
 # Example output: /Users/yourname/clio-mcp
 ```
 
-### Step 2 — Create a Clio API application
+### Step 2: Create a Clio API application
 
 1. Go to **[developers.clio.com](https://developers.clio.com)** and sign in with your Clio login
 2. Click **Developer Apps → Add**
 3. Give it a name (e.g., *Claude Connector*)
 4. Set the redirect URI to exactly: `http://127.0.0.1:5678/callback`
 5. Save the application
-6. Copy the **Client ID** and **Client Secret** — you will need them in the next step
+6. Copy the **Client ID** and **Client Secret**; you will need them in the next step
 
-### Step 3 — Configure Claude Desktop
+### Step 3: Configure Claude Desktop
 
 As of v2.0.0 the connector supports two transports: **stdio** (the connector runs as a child process of Claude Desktop, single-user) and **HTTP/SSE** (the connector runs as a standalone server, supports multiple sessions and remote access). Pick one.
 
@@ -236,7 +238,7 @@ Open your Claude Desktop configuration file:
 - **Mac:** `~/Library/Application Support/Claude/claude_desktop_config.json`
 - **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
 
-#### Option A — stdio (simplest, single-user)
+#### Option A: stdio (simplest, single-user)
 
 Add the following block inside the `"mcpServers"` section, replacing the placeholder values with your own:
 
@@ -258,47 +260,53 @@ Add the following block inside the `"mcpServers"` section, replacing the placeho
 
 Replace `/FULL/PATH/TO/clio-mcp` with the path you noted in Step 1 (e.g., `/Users/yourname/clio-mcp`). `TRANSPORT=stdio` is required because the connector defaults to HTTP mode at v2.0.0.
 
-#### Option B — HTTP/SSE (standalone server, multi-session)
+#### Option B: HTTP/SSE (standalone server, multi-session)
 
-Start the connector as a long-running server. In a terminal, from the `clio-mcp` directory:
+Start the connector as a long-running server. **In HTTP mode an API key is required.** The server refuses to start unless `MCP_API_KEY` is set to a secret of at least 24 characters. Generate one first, then start the server. In a terminal, from the `clio-mcp` directory:
 
 ```bash
-TRANSPORT=http MCP_BASE_URL=http://127.0.0.1:3000 \
+# Generate a key once and keep it somewhere safe
+openssl rand -hex 32
+
+TRANSPORT=http MCP_BASE_URL=http://127.0.0.1:3000 MCP_API_KEY=<the key you generated> \
 CLIO_CLIENT_ID=your_client_id CLIO_CLIENT_SECRET=your_client_secret \
 node build/index.js
 ```
 
-Then point Claude Desktop at it via the [`mcp-remote`](https://www.npmjs.com/package/mcp-remote) bridge:
+Then point Claude Desktop at it via the [`mcp-remote`](https://www.npmjs.com/package/mcp-remote) bridge, passing the same key as a bearer token. (`mcp-remote` recommends the `${AUTH_HEADER}` form because Claude Desktop does not handle spaces inside `args` reliably.)
 
 ```json
 {
   "mcpServers": {
     "clio": {
       "command": "npx",
-      "args": ["-y", "mcp-remote", "http://127.0.0.1:3000/mcp"]
+      "args": ["-y", "mcp-remote", "http://127.0.0.1:3000/mcp", "--header", "Authorization:${AUTH_HEADER}"],
+      "env": { "AUTH_HEADER": "Bearer <the key you generated>" }
     }
   }
 }
 ```
 
-If you set `MCP_API_KEY` on the server, pass it as a header from `mcp-remote` (`--header "Authorization: Bearer <key>"`).
+Every route that reaches the MCP server returns `401 Unauthorized` without the key: all methods on `/mcp` (POST, the GET/SSE stream, DELETE) and any unknown path. Only `/health` and the OAuth redirect target `/oauth/callback` are reachable without it, because Clio's browser redirect cannot carry a bearer token.
+
+**Local development only:** if you need to run the HTTP server without a key on your own machine, set `MCP_ALLOW_UNAUTHENTICATED=true`. The server starts with a loud warning and every route is open. Never use this on a public host or anywhere other people can reach the port; anyone who can reach the endpoint can drive the connector with your Clio access.
 
 ---
 
 If the file already has other MCP servers configured, add a comma after the last entry and then add the `"clio"` block.
 
-**Using Clio EU, Canada, or Australia?** Change `CLIO_API_BASE`, `CLIO_AUTH_URL`, and `CLIO_TOKEN_URL` to your regional Clio endpoints (for example, `https://eu.app.clio.com/...`). Contact Clio support if you are unsure which region your firm is on.
+**Using Clio EU, Australia, or Canada?** Set `CLIO_REGION` to `eu`, `au`, or `ca` (the default is `us`). Clio assigns the region when the account is created, and the value must match the Clio server your firm logs in to: `app.clio.com` (us), `eu.app.clio.com` (eu), `au.app.clio.com` (au), or `ca.app.clio.com` (ca). Check the hostname in your browser after logging in to Clio, or contact Clio support if you are unsure. See [Clio regions](#clio-regions) below for the full table.
 
-### Step 4 — Restart Claude Desktop
+### Step 4: Restart Claude Desktop
 
 Quit Claude Desktop completely and reopen it.
 
 > [!TIP]
 > **On Windows?** The same Windows-specific gotchas that hit our MyCase MCP install also hit Clio MCP: `Could not attach to MCP server` (direct npx invocation), `UNABLE_TO_VERIFY_LEAF_SIGNATURE` (corporate antivirus SSL inspection), and OAuth redirect port mismatches. The fixes (`cmd /c npx` wrapper, `NODE_OPTIONS=--use-system-ca`, port matching) are documented in our companion install guide.
 >
-> → **[MyCase MCP on Windows: The Install Guide We Wish Existed](https://oktopeak.com/blog/mycase-mcp-windows-install-guide/?utm_source=github&utm_medium=readme&utm_campaign=clio-mcp&utm_content=windows-install-guide)** — written for MyCase MCP but the Windows fixes apply identically to Clio MCP.
+> → **[MyCase MCP on Windows: The Install Guide We Wish Existed](https://oktopeak.com/blog/mycase-mcp-windows-install-guide/?utm_source=github&utm_medium=readme&utm_campaign=clio-mcp&utm_content=windows-install-guide)**, written for MyCase MCP but the Windows fixes apply identically to Clio MCP.
 
-### Step 5 — Authenticate with Clio
+### Step 5: Authenticate with Clio
 
 In a new Claude conversation, type:
 
@@ -321,9 +329,9 @@ You should see your Clio user ID and token expiry time.
 > [!TIP]
 > **Not the person who edits config files?**
 >
-> If the five steps above look like too much, we can deploy it in your firm for you — scoped OAuth credentials, audit log wired into your stack, one custom workflow designed with your team, and training. Most law firms find this is the faster path.
+> If the five steps above look like too much, we can deploy it in your firm for you: scoped OAuth credentials, audit log wired into your stack, one custom workflow designed with your team, and training. Most law firms find this is the faster path.
 >
-> → **[See Guided MCP Setup](https://oktopeak.com/services/mcp-guided-setup/?utm_source=github&utm_medium=readme&utm_campaign=clio-mcp&utm_content=mid-tip-svc)** — or [book a 30-min scoping call](https://calendly.com/office-oktopeak/30min?utm_source=github&utm_medium=readme&utm_campaign=clio-mcp&utm_content=mid-tip-call)
+> → **[See Guided MCP Setup](https://oktopeak.com/services/mcp-guided-setup/?utm_source=github&utm_medium=readme&utm_campaign=clio-mcp&utm_content=mid-tip-svc)**, or [book a 30-min scoping call](https://calendly.com/office-oktopeak/30min?utm_source=github&utm_medium=readme&utm_campaign=clio-mcp&utm_content=mid-tip-call)
 
 ---
 
@@ -351,7 +359,7 @@ Claude selects and calls these tools automatically based on your questions. You 
 
 | Tool | Inputs | What it does |
 |---|---|---|
-| `search_contacts` | `query`, `limit`, `page_token` | Searches contacts by name, email, or company; returns a paginated envelope with `total_count`, `has_more`, and `next_page_token` — pass the token back to fetch the next page |
+| `search_contacts` | `query`, `limit`, `page_token` | Searches contacts by name, email, or company; returns a paginated envelope with `total_count`, `has_more`, and `next_page_token`; pass the token back to fetch the next page |
 | `get_contact` | `contact_id` | Returns full detail for a specific contact including all emails, phone numbers, and addresses |
 
 ### Documents (3 tools)
@@ -385,7 +393,7 @@ Claude selects and calls these tools automatically based on your questions. You 
 |---|---|---|
 | `list_time_entries` | `matter_id`, `start_date`, `end_date`, `limit` | Lists billable time entries with optional filters |
 | `log_time_entry` | `matter_id`, `date`, `quantity_in_hours`, `note`, `price`, `non_billable`, `no_charge`, `activity_description_id`, `user_id` | Creates a new billable (or non-billable) time entry on a matter |
-| `create_activity` | `type`, `date`, `matter_id`, `note`, `quantity_in_hours`, `price`, `non_billable`, `no_charge`, `activity_description_id`, `user_id`, `reference`, `tax_setting` | Creates any Clio activity type — TimeEntry, ExpenseEntry, HardCostEntry, or SoftCostEntry |
+| `create_activity` | `type`, `date`, `matter_id`, `note`, `quantity_in_hours`, `price`, `non_billable`, `no_charge`, `activity_description_id`, `user_id`, `reference`, `tax_setting` | Creates any Clio activity type: TimeEntry, ExpenseEntry, HardCostEntry, or SoftCostEntry |
 
 ### Billing (1 tool)
 
@@ -416,33 +424,45 @@ Claude selects and calls these tools automatically based on your questions. You 
 
 ## Resources
 
-The connector also exposes two MCP resources — read-only content that compatible clients (including Claude Desktop) can surface automatically at the start of a session.
+The connector also exposes two MCP resources: read-only content that compatible clients (including Claude Desktop) can surface automatically at the start of a session.
 
 | Resource URI | What it contains |
 |---|---|
 | `clio://compliance/notice` | One-paragraph compliance reminder covering ABA Opinion 512, audit logging, and the attorney-review requirement for AI-generated content |
-| `clio://auth/status` | Live authentication state — whether you are connected, your Clio user ID, and minutes until token expiry |
+| `clio://auth/status` | Live authentication state: whether you are connected, your Clio user ID, and minutes until token expiry |
 
 ---
 
 ## Configuration reference
 
-All settings are passed as environment variables (in your Claude Desktop config for stdio mode, or in the server's environment for HTTP mode). Only `CLIO_CLIENT_ID` and `CLIO_CLIENT_SECRET` are required in all modes; `MCP_BASE_URL` is additionally required in HTTP mode.
+All settings are passed as environment variables (in your Claude Desktop config for stdio mode, or in the server's environment for HTTP mode). Only `CLIO_CLIENT_ID` and `CLIO_CLIENT_SECRET` are required in all modes; `MCP_BASE_URL` and `MCP_API_KEY` are additionally required in HTTP mode.
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `CLIO_CLIENT_ID` | Yes | — | Client ID from your Clio developer application |
-| `CLIO_CLIENT_SECRET` | Yes | — | Client Secret from your Clio developer application |
+| `CLIO_CLIENT_ID` | Yes | (none) | Client ID from your Clio developer application |
+| `CLIO_CLIENT_SECRET` | Yes | (none) | Client Secret from your Clio developer application |
 | `TRANSPORT` | No | `http` | `stdio` or `http`. Defaults to `http` at v2.0.0; set to `stdio` for the pre-v2 behavior |
-| `MCP_BASE_URL` | HTTP mode | — | Public base URL of this server (e.g. `http://127.0.0.1:3000`). Used for the OAuth redirect |
+| `MCP_BASE_URL` | HTTP mode | (none) | Public base URL of this server (e.g. `http://127.0.0.1:3000`). Used for the OAuth redirect |
 | `PORT` | No | `3000` | HTTP listen port (HTTP mode only) |
-| `MCP_API_KEY` | No | — | If set, the HTTP server requires this bearer token in the `Authorization` header. Recommended for any non-localhost deployment |
+| `MCP_API_KEY` | HTTP mode | (none) | Bearer token every client must send in the `Authorization` header. Required in HTTP mode, minimum 24 characters; the server refuses to start without it. Generate with `openssl rand -hex 32` |
+| `MCP_ALLOW_UNAUTHENTICATED` | No | `false` | Local development only. `true` lets the HTTP server start without `MCP_API_KEY` and prints a warning at startup. Never set this on a public host |
 | `ENCRYPTION_KEY` | No | auto-generated | Overrides OS keychain. Required only for CI/headless installs where no keychain is available. Must be a 64-character hex string. |
 | `CLIO_REDIRECT_PORT` | No | `5678` | Local port for the OAuth callback (stdio mode). Change if 5678 is in use on your machine |
-| `CLIO_REGION` | No | `us` | `us` or `eu`. Controls the default Clio API and auth base URLs |
-| `CLIO_API_BASE` | No | `https://app.clio.com/api/v4` | Override for Clio EU, Canada, or Australia (e.g., `https://eu.app.clio.com/api/v4`) |
-| `CLIO_AUTH_URL` | No | `https://app.clio.com/oauth/authorize` | OAuth authorization endpoint |
-| `CLIO_TOKEN_URL` | No | `https://app.clio.com/oauth/token` | OAuth token endpoint |
+| `CLIO_REGION` | No | `us` | Clio data region: `us`, `eu`, `au`, or `ca`. Controls the default Clio API and OAuth base URLs. Set at Clio account creation; must match the server your firm logs in to. Any other value stops startup with an error |
+| `CLIO_API_BASE` | No | `<region host>/api/v4` | Advanced override for the API base URL. Takes precedence over `CLIO_REGION` |
+| `CLIO_AUTH_URL` | No | `<region host>/oauth/authorize` | Advanced override for the OAuth authorization endpoint |
+| `CLIO_TOKEN_URL` | No | `<region host>/oauth/token` | Advanced override for the OAuth token endpoint |
+
+### Clio regions
+
+Clio hosts each firm's data in one of four regions. The region is chosen when the Clio account is created and the connector cannot change it; set `CLIO_REGION` to match the server your firm logs in to (the hostname in the browser address bar after login). Any value outside this list stops the connector at startup with an error naming the valid values. There is no silent fallback to the US endpoint.
+
+| `CLIO_REGION` | Clio server | API base | OAuth authorize / token |
+|---|---|---|---|
+| `us` (default) | `app.clio.com` | `https://app.clio.com/api/v4` | `https://app.clio.com/oauth/authorize`, `https://app.clio.com/oauth/token` |
+| `eu` | `eu.app.clio.com` | `https://eu.app.clio.com/api/v4` | `https://eu.app.clio.com/oauth/authorize`, `https://eu.app.clio.com/oauth/token` |
+| `au` | `au.app.clio.com` | `https://au.app.clio.com/api/v4` | `https://au.app.clio.com/oauth/authorize`, `https://au.app.clio.com/oauth/token` |
+| `ca` | `ca.app.clio.com` | `https://ca.app.clio.com/api/v4` | `https://ca.app.clio.com/oauth/authorize`, `https://ca.app.clio.com/oauth/token` |
 
 ---
 
@@ -467,7 +487,7 @@ Each entry contains:
 | `error_message` | Present only when `outcome` is `error` |
 | `clio_user_id` | The Clio user whose credentials were active |
 | `matter_id` | Present for matter-specific queries |
-| `result_count` | Present for list / export tools — number of records returned |
+| `result_count` | Present for list / export tools: number of records returned |
 
 The log file is append-only and never rotated or truncated by this software. To archive old entries, use your operating system's log rotation tools (`logrotate` on Linux/Mac).
 
@@ -479,16 +499,16 @@ The log file is append-only and never rotated or truncated by this software. To 
 Restart Claude Desktop fully (quit, do not just close the window). If the problem persists, check that the path in your config file is correct and that `build/index.js` exists in that folder.
 
 **Authentication opens a browser but then nothing happens**
-Make sure the redirect URI in your Clio developer application is set to exactly `http://127.0.0.1:5678/callback`. No trailing slash, no `localhost` — it must be `127.0.0.1`.
+Make sure the redirect URI in your Clio developer application is set to exactly `http://127.0.0.1:5678/callback`. No trailing slash, no `localhost`; it must be `127.0.0.1`.
 
 **"ENCRYPTION_KEY must be 64 hex chars" error**
-This error appears when `ENCRYPTION_KEY` is set in your environment but has the wrong length. Either correct or remove the value — if removed, the connector will use the key stored in your OS keychain (or generate one on first run).
+This error appears when `ENCRYPTION_KEY` is set in your environment but has the wrong length. Either correct or remove the value; if removed, the connector will use the key stored in your OS keychain (or generate one on first run).
 
 **"Token file exists but decryption failed" warning**
-This appears if the encryption key no longer matches the key used to encrypt the token file — for example, if the keychain entry was deleted, you switched machines, or you changed `ENCRYPTION_KEY`. Run the `logout` tool in Claude and then `authenticate` again to re-create the token file with the current key.
+This appears if the encryption key no longer matches the key used to encrypt the token file, for example if the keychain entry was deleted, you switched machines, or you changed `ENCRYPTION_KEY`. Run the `logout` tool in Claude and then `authenticate` again to re-create the token file with the current key.
 
 **Logout does not clear the keychain entry**
-The `logout` command removes your stored token file but not the encryption key from the OS keychain. For a complete credential wipe — for example, when transferring a machine — also remove the `clio-mcp / encryption-key` entry via your system's keychain manager: Keychain Access on macOS, Windows Credential Manager on Windows, or `secret-tool delete --label clio-mcp` on Linux.
+The `logout` command removes your stored token file but not the encryption key from the OS keychain. For a complete credential wipe (for example, when transferring a machine), also remove the `clio-mcp / encryption-key` entry via your system's keychain manager: Keychain Access on macOS, Windows Credential Manager on Windows, or `secret-tool delete --label clio-mcp` on Linux.
 
 **Port 5678 is already in use**
 Add `"CLIO_REDIRECT_PORT": "5679"` to the `env` block in your Claude Desktop config, and update your Clio application's redirect URI to `http://127.0.0.1:5679/callback`.
@@ -501,10 +521,10 @@ The open-source connector handles about 20% of what most firms eventually want f
 
 We help two ways, depending on your scope:
 
-→ **Guided MCP Setup** — We deploy the connector in your firm with scoped credentials, audit log wired into your stack, a custom workflow designed with your team, and training. Scope and pricing tailored to your firm.
+→ **Guided MCP Setup**: We deploy the connector in your firm with scoped credentials, audit log wired into your stack, a custom workflow designed with your team, and training. Scope and pricing tailored to your firm.
   → [oktopeak.com/services/mcp-guided-setup/](https://oktopeak.com/services/mcp-guided-setup/?utm_source=github&utm_medium=readme&utm_campaign=clio-mcp&utm_content=footer-svc-guided)
 
-→ **Legal AI Integration** — For multi-workflow builds, document automation, intake automation, custom AI agents, and full compliance architecture across your stack.
+→ **Legal AI Integration**: For multi-workflow builds, document automation, intake automation, custom AI agents, and full compliance architecture across your stack.
   → [oktopeak.com/services/legal-ai-integration/](https://oktopeak.com/services/legal-ai-integration/?utm_source=github&utm_medium=readme&utm_campaign=clio-mcp&utm_content=footer-svc-legal-ai)
 
 → **Firm-wide deployment:** rolling Claude + this connector out to a whole firm (Claude Cowork, multi-user, security review)? See [Firm Deployment](https://oktopeak.com/services/firm-deployment/?utm_source=github&utm_medium=readme&utm_campaign=clio-mcp&utm_content=footer-svc-firm-deployment).
@@ -520,30 +540,30 @@ Want to talk first? → [Book a 30-min scoping call](https://calendly.com/office
 
 We ship the same kind of connector for other practice management platforms:
 
-- **[MyCase MCP](https://github.com/oktopeak/mycase-mcp)** — open-source MCP connector for MyCase legal practice management. Same architecture, same audit logging, same encryption at rest. MIT licensed. npm: [`@oktopeak/mycase-mcp`](https://www.npmjs.com/package/@oktopeak/mycase-mcp)
-- **[Filevine MCP](https://github.com/oktopeak/filevine-mcp)** — open-source MCP connector for Filevine practice management. 17 tools across cases, contacts, notes, documents, tasks, and Collection sections. Same architecture, same audit logging, same encryption at rest. MIT licensed. npm: [`@oktopeak/filevine-mcp`](https://www.npmjs.com/package/@oktopeak/filevine-mcp)
-- **[IntakeQ / PracticeQ MCP](https://github.com/oktopeak/IntakeQ)** — HIPAA-aware MCP connector for IntakeQ/PracticeQ (healthcare / behavioral & allied-health clinics). Audit logging on every PHI read/write, BAA + Zero-Data-Retention guidance. MIT licensed. npm: [`@oktopeak/intakeq-mcp`](https://www.npmjs.com/package/@oktopeak/intakeq-mcp)
+- **[MyCase MCP](https://github.com/oktopeak/mycase-mcp)**: open-source MCP connector for MyCase legal practice management. Same architecture, same audit logging, same encryption at rest. MIT licensed. npm: [`@oktopeak/mycase-mcp`](https://www.npmjs.com/package/@oktopeak/mycase-mcp)
+- **[Filevine MCP](https://github.com/oktopeak/filevine-mcp)**: open-source MCP connector for Filevine practice management. 17 tools across cases, contacts, notes, documents, tasks, and Collection sections. Same architecture, same audit logging, same encryption at rest. MIT licensed. npm: [`@oktopeak/filevine-mcp`](https://www.npmjs.com/package/@oktopeak/filevine-mcp)
+- **[IntakeQ / PracticeQ MCP](https://github.com/oktopeak/IntakeQ)**: HIPAA-aware MCP connector for IntakeQ/PracticeQ (healthcare / behavioral & allied-health clinics). Audit logging on every PHI read/write, BAA + Zero-Data-Retention guidance. MIT licensed. npm: [`@oktopeak/intakeq-mcp`](https://www.npmjs.com/package/@oktopeak/intakeq-mcp)
 
 ---
 
 ## Supporting this project
 
-This connector is free, MIT licensed, and maintained by [Oktopeak](https://oktopeak.com). It always will be — we don't take donations. If it saved you time, the things that actually help:
+This connector is free, MIT licensed, and maintained by [Oktopeak](https://oktopeak.com). It always will be; we don't take donations. If it saved you time, the things that actually help:
 
 - **Star this repo.** It is genuinely how other firms find it.
 - **Tell another firm** running Clio.
 - **[Leave a review](https://clutch.co/profile/oktopeak)** if we helped you directly.
-- Need it deployed, extended, or maintained for your firm? **[Commercial support](https://oktopeak.com/clio-mcp/)** — that is what funds the free work.
+- Need it deployed, extended, or maintained for your firm? **[Commercial support](https://oktopeak.com/clio-mcp/)**; that is what funds the free work.
 
 ## Who we are
 
-**[Oktopeak](https://oktopeak.com/?utm_source=github&utm_medium=readme&utm_campaign=clio-mcp&utm_content=who-we-are) — digital transformation for law firms and healthcare.**
+**[Oktopeak](https://oktopeak.com/?utm_source=github&utm_medium=readme&utm_campaign=clio-mcp&utm_content=who-we-are): digital transformation for law firms and healthcare.**
 
-We're a 7-person in-house product team building AI solutions for regulated industries: AI integrations, workflow automation, and custom software our clients own outright. We maintain four open-source MCP connectors — Clio, [MyCase](https://github.com/oktopeak/mycase-mcp), [Filevine](https://github.com/oktopeak/filevine-mcp), and [IntakeQ](https://github.com/oktopeak/IntakeQ) — and deploy them inside real practices with scoped credentials, audit logs, and workflows built around how your team actually works.
+We're a 7-person in-house product team building AI solutions for regulated industries: AI integrations, workflow automation, and custom software our clients own outright. We maintain four open-source MCP connectors (Clio, [MyCase](https://github.com/oktopeak/mycase-mcp), [Filevine](https://github.com/oktopeak/filevine-mcp), and [IntakeQ](https://github.com/oktopeak/IntakeQ)) and deploy them inside real practices with scoped credentials, audit logs, and workflows built around how your team actually works.
 
 - 🌐 [oktopeak.com](https://oktopeak.com/?utm_source=github&utm_medium=readme&utm_campaign=clio-mcp&utm_content=who-we-are)
 - 📅 [Book a 30-min call](https://calendly.com/office-oktopeak/30min?utm_source=github&utm_medium=readme&utm_campaign=clio-mcp&utm_content=who-we-are-call)
-- ✉️ office@oktopeak.com — security reports welcome
+- ✉️ office@oktopeak.com (security reports welcome)
 - 💼 [LinkedIn](https://www.linkedin.com/company/oktopeak-tech)
 
 ---

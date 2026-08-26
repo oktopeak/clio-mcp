@@ -1,13 +1,11 @@
 import http from "http";
 import crypto from "crypto";
 import { saveTokens, loadTokens } from "./tokenStorage.js";
+import { getClioApiBaseUrl, getClioAuthorizeUrl, getClioTokenUrl } from "../utils/clioRegion.js";
 
-function getClioBase() {
-  const region = (process.env.CLIO_REGION ?? "us").toLowerCase();
-  return region === "eu" ? "https://eu.app.clio.com" : "https://app.clio.com";
-}
-function getAuthUrl() { return process.env.CLIO_AUTH_URL ?? `${getClioBase()}/oauth/authorize`; }
-function getTokenUrl() { return process.env.CLIO_TOKEN_URL ?? `${getClioBase()}/oauth/token`; }
+// Region-aware endpoints (us/eu/au/ca) with CLIO_AUTH_URL / CLIO_TOKEN_URL overrides. See utils/clioRegion.ts.
+function getAuthUrl() { return getClioAuthorizeUrl(); }
+function getTokenUrl() { return getClioTokenUrl(); }
 
 export interface ClioTokens {
   access_token: string;
@@ -48,7 +46,7 @@ export async function runOAuthFlow(): Promise<ClioTokens> {
   );
 
   try {
-    const meRes = await fetch(`${getClioBase()}/api/v4/users/who_am_i.json`, {
+    const meRes = await fetch(`${getClioApiBaseUrl()}/users/who_am_i.json`, {
       headers: { Authorization: `Bearer ${tokens.access_token}` },
     });
     if (meRes.ok) {
@@ -220,7 +218,7 @@ export async function getValidAccessToken(): Promise<string> {
 
   if (!tokens.clio_user_id && !tokens.user_id_unavailable) {
     try {
-      const meRes = await fetch(`${getClioBase()}/api/v4/users/who_am_i.json`, {
+      const meRes = await fetch(`${getClioApiBaseUrl()}/users/who_am_i.json`, {
         headers: { Authorization: `Bearer ${tokens.access_token}` },
       });
       if (meRes.ok) {

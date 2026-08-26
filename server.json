@@ -46,14 +46,14 @@
         },
         {
           "name": "CLIO_REGION",
-          "description": "Clio region: 'us' (default) or 'eu'. Controls API and auth base URLs.",
+          "description": "Clio data region: 'us' (default, app.clio.com), 'eu' (eu.app.clio.com), 'au' (au.app.clio.com), or 'ca' (ca.app.clio.com). Controls the API and OAuth base URLs. Fixed at Clio account creation; must match the server your firm logs in to. Any other value stops startup.",
           "isRequired": false,
           "format": "string",
           "isSecret": false
         },
         {
           "name": "CLIO_API_BASE",
-          "description": "Override the Clio API base URL (e.g. https://eu.app.clio.com/api/v4). Use instead of CLIO_REGION for fine-grained control.",
+          "description": "Advanced override for the Clio API base URL (e.g. https://eu.app.clio.com/api/v4). Takes precedence over CLIO_REGION.",
           "isRequired": false,
           "format": "string",
           "isSecret": false

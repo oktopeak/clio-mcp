@@ -3,18 +3,31 @@ import { readFileSync } from 'fs';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { getClioRegion, CLIO_REGION_BASE_URLS } from './utils/clioRegion.js';
+import { resolveHttpAuthConfig } from './server/httpAuth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '../.env') });
 const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
 
+function fatal(message: string): never {
+    console.error(`[startup] Fatal: ${message}`);
+    process.exit(1);
+}
+
 async function main() {
     const missing = (["CLIO_CLIENT_ID", "CLIO_CLIENT_SECRET"] as const)
         .filter((k) => !process.env[k]);
     if (missing.length > 0) {
-        console.error(`[startup] Fatal: missing required env var(s): ${missing.join(", ")}. Check your .env file.`);
-        process.exit(1);
+        fatal(`missing required env var(s): ${missing.join(", ")}. Check your .env file.`);
     }
+
+    // Fail fast on an unknown CLIO_REGION (both transports). No silent fallback to the US endpoint.
+    const region = (() => {
+        try { return getClioRegion(); }
+        catch (err: any) { return fatal(err.message); }
+    })();
+    console.error(`[startup] Clio region: ${region} (${CLIO_REGION_BASE_URLS[region]})`);
 
     const mode = (process.env.TRANSPORT ?? "http").toLowerCase();
 
@@ -53,11 +66,16 @@ async function main() {
         console.error("Clio MCP server running on stdio");
     } else {
         if (!process.env.MCP_BASE_URL) {
-            console.error("[startup] Fatal: MCP_BASE_URL is required in HTTP mode (e.g. https://mcp.example.com). Set TRANSPORT=stdio for local single-user mode.");
-            process.exit(1);
+            fatal("MCP_BASE_URL is required in HTTP mode (e.g. https://mcp.example.com). Set TRANSPORT=stdio for local single-user mode.");
         }
+        // MCP_API_KEY is mandatory in HTTP mode (min 24 chars). Only MCP_ALLOW_UNAUTHENTICATED=true
+        // (local development) lets the server start without it, with a loud warning.
+        const auth = (() => {
+            try { return resolveHttpAuthConfig(); }
+            catch (err: any) { return fatal(err.message); }
+        })();
         const { startHttpServer } = await import("./server/http.js");
-        startHttpServer();
+        startHttpServer(auth);
     }
 }
 
