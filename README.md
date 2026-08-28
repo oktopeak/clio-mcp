@@ -52,7 +52,7 @@ ABA Opinion 512 (2023) requires attorneys using AI tools to understand how those
 
 - **No data retention by the connector.** The connector does not store matter data, client names, or any Clio content. It fetches from the API and passes results to Claude. The only thing persisted locally is your authentication token, and that is encrypted (see below).
 
-- **Scope limited to tasks, notes, and document uploads.** The connector can create tasks and notes on matters, and upload documents to matters. It cannot create, edit, or delete matters, contacts, calendar entries, or billing records. This is a deliberate v1 design choice: write access is limited to the operations most useful for AI-assisted legal work while minimising liability.
+- **Nine write tools, all logged, all optional.** The connector can create matters, notes, tasks, calendar entries, time entries and activities, update and complete tasks, and upload documents. It never deletes anything and never touches contacts or billing records. Every write is recorded in the audit log, and `READ_ONLY=true` removes all nine write tools from the server entirely (see [Read-only mode](#read-only-mode)), so a firm can start with read access and turn writes on when it has decided to.
 
 ### Token security: encryption at rest
 
@@ -452,6 +452,24 @@ All settings are passed as environment variables (in your Claude Desktop config 
 | `CLIO_API_BASE` | No | `<region host>/api/v4` | Advanced override for the API base URL. Takes precedence over `CLIO_REGION` |
 | `CLIO_AUTH_URL` | No | `<region host>/oauth/authorize` | Advanced override for the OAuth authorization endpoint |
 | `CLIO_TOKEN_URL` | No | `<region host>/oauth/token` | Advanced override for the OAuth token endpoint |
+| `READ_ONLY` | No | `false` | `true`, `1` or `yes` leaves the nine write tools unregistered so Claude can read Clio but never change it. Works on both transports. See [Read-only mode](#read-only-mode) |
+
+### Read-only mode
+
+Set `READ_ONLY=true` and the connector never registers its nine write tools (`create_matter`, `create_note`, `create_task`, `update_task`, `complete_task`, `create_calendar_entry`, `log_time_entry`, `create_activity`, `upload_document`). They do not appear in Claude's tool list and a call to any of them is rejected by the server, so this is a server-side guarantee rather than a client-side prompt. The 17 read tools, the auth tools and the audit export keep working. Without it, the only thing standing between Claude and a write is the approval prompt your MCP client shows, which belongs to the client, not to this connector.
+
+For Claude Desktop, add it next to the other variables:
+
+```json
+"env": {
+  "CLIO_CLIENT_ID": "...",
+  "CLIO_CLIENT_SECRET": "...",
+  "TRANSPORT": "stdio",
+  "READ_ONLY": "true"
+}
+```
+
+Every tool also carries MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) so clients that honour them can show which calls change data before you approve them.
 
 ### Clio regions
 
@@ -571,7 +589,7 @@ We're a 7-person in-house product team building AI solutions for regulated indus
 
 ## Contributing
 
-Issues and pull requests welcome. If you run into a Clio API edge case this connector does not handle cleanly, open an issue with the scenario and an example request. If you want to add a tool that falls within the "read-only" v1 scope, send a PR.
+Issues and pull requests welcome. If you run into a Clio API edge case this connector does not handle cleanly, open an issue with the scenario and an example request. If you add a tool, register its name in `src/tools/index.ts` (`TOOL_META`, and `WRITE_TOOLS` if it changes Clio data) so the read-only gate and the annotations cover it; `registry.test.ts` fails otherwise.
 
 ---
 

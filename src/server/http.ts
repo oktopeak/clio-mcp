@@ -5,18 +5,7 @@ import { randomUUID, timingSafeEqual } from "crypto";
 const pkg = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8"));
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { registerAuthTools } from "../auth/authTools.js";
-import { registerResources } from "../resources/index.js";
-import { registerMatterTools } from "../tools/matters.js";
-import { registerContactTools } from "../tools/contacts.js";
-import { registerDocumentTools } from "../tools/documents.js";
-import { registerTaskTools } from "../tools/tasks.js";
-import { registerCalendarTools } from "../tools/calendar.js";
-import { registerActivityTools } from "../tools/activities.js";
-import { registerBillingTools } from "../tools/billing.js";
-import { registerNoteTools } from "../tools/notes.js";
-import { registerUserTools } from "../tools/users.js";
-import { registerAuditExportTool } from "../tools/auditExport.js";
+import { registerAllTools, WRITE_TOOLS } from "../tools/index.js";
 import { buildAuthorizationUrl, exchangeCodeForTokensPure, refreshTokensPure } from "../auth/oauth.js";
 import type { ClioTokens } from "../auth/oauth.js";
 import { sessionStorage, SessionContext } from "../utils/sessionContext.js";
@@ -35,20 +24,14 @@ interface SessionRecord {
 
 const sessions = new Map<string, SessionRecord>();
 
-function createMcpServer(): McpServer {
+export interface HttpServerOptions {
+  /** Leave the write tools unregistered for every session (READ_ONLY=true). */
+  readOnly?: boolean;
+}
+
+function createMcpServer(opts: HttpServerOptions = {}): McpServer {
   const server = new McpServer({ name: "clio-mcp", version: pkg.version });
-  registerAuthTools(server);
-  registerResources(server);
-  registerMatterTools(server);
-  registerContactTools(server);
-  registerDocumentTools(server);
-  registerTaskTools(server);
-  registerCalendarTools(server);
-  registerActivityTools(server);
-  registerBillingTools(server);
-  registerNoteTools(server);
-  registerUserTools(server);
-  registerAuditExportTool(server);
+  registerAllTools(server, { readOnly: opts.readOnly });
   return server;
 }
 
@@ -92,7 +75,7 @@ setInterval(() => {
  * return 401 without a valid key. Only PUBLIC_PATHS (/health and the OAuth
  * redirect target) are reachable without it. Exported for tests.
  */
-export function createApp(auth: HttpAuthConfig): express.Express {
+export function createApp(auth: HttpAuthConfig, opts: HttpServerOptions = {}): express.Express {
   const app = express();
 
   app.use(createApiKeyMiddleware(auth));
@@ -118,7 +101,7 @@ export function createApp(auth: HttpAuthConfig): express.Express {
         const transport = new StreamableHTTPServerTransport({
           sessionIdGenerator: () => randomUUID(),
           onsessioninitialized: async (sessionId) => {
-            record.mcpServer = createMcpServer();
+            record.mcpServer = createMcpServer(opts);
             sessions.set(sessionId, record);
             await record.mcpServer.connect(transport);
           },
@@ -255,14 +238,20 @@ export function createApp(auth: HttpAuthConfig): express.Express {
  * with a clear message if MCP_API_KEY is missing or too short), so the server
  * never listens in a misconfigured state.
  */
-export function startHttpServer(auth: HttpAuthConfig = resolveHttpAuthConfig()): void {
+export function startHttpServer(
+  auth: HttpAuthConfig = resolveHttpAuthConfig(),
+  opts: HttpServerOptions = {}
+): void {
   const port = parseInt(process.env.PORT ?? "3000", 10);
-  const app = createApp(auth);
+  const app = createApp(auth, opts);
   app.listen(port, () => {
     const baseUrl = (process.env.MCP_BASE_URL ?? `http://127.0.0.1:${port}`).trim();
     console.error(`[http] Clio MCP server listening on port ${port}`);
     console.error(`[http] MCP endpoint : ${baseUrl}/mcp`);
     console.error(`[http] Health check : ${baseUrl}/health`);
+    if (opts.readOnly) {
+      console.error(`[http] Tools        : READ_ONLY=true, ${WRITE_TOOLS.size} write tools not registered`);
+    }
     if (auth.apiKey === null) {
       console.error("[http] ****************************************************************************");
       console.error("[http] WARNING: MCP_ALLOW_UNAUTHENTICATED=true. NO API KEY IS REQUIRED ON ANY ROUTE.");

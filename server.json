@@ -19,7 +19,7 @@
       "environmentVariables": [
         {
           "name": "CLIO_CLIENT_ID",
-          "description": "Client ID from your Clio developer application (Settings \u2192 Developer Applications)",
+          "description": "Client ID from your Clio developer application (Settings → Developer Applications)",
           "isRequired": true,
           "format": "string",
           "isSecret": false
@@ -48,6 +48,13 @@
         {
           "name": "CLIO_REGION",
           "description": "Clio data region: 'us' (default, app.clio.com), 'eu' (eu.app.clio.com), 'au' (au.app.clio.com), or 'ca' (ca.app.clio.com). Controls the API and OAuth base URLs. Fixed at Clio account creation; must match the server your firm logs in to. Any other value stops startup.",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "READ_ONLY",
+          "description": "Optional. 'true', '1' or 'yes' leaves the nine write tools (create_matter, create_note, create_task, update_task, complete_task, create_calendar_entry, log_time_entry, create_activity, upload_document) unregistered so Claude can read Clio but never change it. Works on both transports.",
           "isRequired": false,
           "format": "string",
           "isSecret": false

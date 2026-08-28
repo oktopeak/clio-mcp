@@ -31,35 +31,19 @@ async function main() {
 
     const mode = (process.env.TRANSPORT ?? "http").toLowerCase();
 
+    // READ_ONLY=true leaves the 9 write tools unregistered on either transport.
+    const { registerAllTools, isReadOnlyEnv, WRITE_TOOLS } = await import("./tools/index.js");
+    const readOnly = isReadOnlyEnv();
+    if (readOnly) {
+        console.error(`[startup] READ_ONLY=true: ${WRITE_TOOLS.size} write tools are not registered (${[...WRITE_TOOLS].join(", ")})`);
+    }
+
     if (mode === "stdio") {
         const { McpServer } = await import("@modelcontextprotocol/sdk/server/mcp.js");
         const { StdioServerTransport } = await import("@modelcontextprotocol/sdk/server/stdio.js");
-        const { registerAuthTools } = await import("./auth/authTools.js");
-        const { registerResources } = await import("./resources/index.js");
-        const { registerMatterTools } = await import("./tools/matters.js");
-        const { registerContactTools } = await import("./tools/contacts.js");
-        const { registerDocumentTools } = await import("./tools/documents.js");
-        const { registerTaskTools } = await import("./tools/tasks.js");
-        const { registerCalendarTools } = await import("./tools/calendar.js");
-        const { registerActivityTools } = await import("./tools/activities.js");
-        const { registerBillingTools } = await import("./tools/billing.js");
-        const { registerNoteTools } = await import("./tools/notes.js");
-        const { registerUserTools } = await import("./tools/users.js");
-        const { registerAuditExportTool } = await import("./tools/auditExport.js");
 
         const server = new McpServer({ name: "clio-mcp", version: pkg.version });
-        registerAuthTools(server);
-        registerResources(server);
-        registerMatterTools(server);
-        registerContactTools(server);
-        registerDocumentTools(server);
-        registerTaskTools(server);
-        registerCalendarTools(server);
-        registerActivityTools(server);
-        registerBillingTools(server);
-        registerNoteTools(server);
-        registerUserTools(server);
-        registerAuditExportTool(server);
+        registerAllTools(server, { readOnly });
 
         const transport = new StdioServerTransport();
         await server.connect(transport);
@@ -75,7 +59,7 @@ async function main() {
             catch (err: any) { return fatal(err.message); }
         })();
         const { startHttpServer } = await import("./server/http.js");
-        startHttpServer(auth);
+        startHttpServer(auth, { readOnly });
     }
 }
 
