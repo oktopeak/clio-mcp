@@ -123,6 +123,8 @@ export interface RegisterAllToolsOptions {
   resources?: boolean;
   /** Extra tool names to leave unregistered, whatever their meta says. */
   exclude?: readonly string[];
+  /** Replace the compliance-notice resource text (hosts say where their audit log lives). */
+  complianceNotice?: string;
 }
 
 /** READ_ONLY=true|1|yes turns the read-only gate on. Anything else leaves it off. */
@@ -180,7 +182,7 @@ export function registerAllTools(
   });
 
   if (authMode !== "none") registerAuthTools(facade);
-  if (opts.resources !== false) registerResources(facade);
+  if (opts.resources !== false) registerResources(facade, { complianceNotice: opts.complianceNotice });
   for (const registrar of REGISTRARS) registrar(facade);
 
   return registered;

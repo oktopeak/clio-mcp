@@ -2,15 +2,15 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { clearTokens, loadTokens } from "./tokenStorage.js";
 import { getValidAccessToken, buildAuthorizationUrl } from "./oauth.js";
 import { appendAuditLog } from "../utils/auditLog.js";
-import { getSessionContext } from "../utils/sessionContext.js";
+import { requireSessionContext } from "../utils/sessionContext.js";
 
 export function registerAuthTools(server: McpServer): void {
   server.registerTool(
     "auth_status",
     { description: "Check whether the connector is authenticated with Clio and when the token expires" },
     async () => {
-      const ctx = getSessionContext();
-      const tokens = ctx ? ctx.getTokens() : await loadTokens();
+      const ctx = requireSessionContext();
+      const tokens = ctx ? await ctx.getTokens() : await loadTokens();
 
       await appendAuditLog({
         tool: "auth_status",
@@ -49,9 +49,19 @@ export function registerAuthTools(server: McpServer): void {
     "authenticate",
     { description: "Trigger the Clio OAuth login flow" },
     async () => {
-      const ctx = getSessionContext();
+      const ctx = requireSessionContext();
       if (ctx) {
-        // HTTP mode: return a URL for the user to visit in their browser
+        // A host that logs users in itself leaves setPendingNonce out; there is nothing for this tool to do there.
+        if (!ctx.setPendingNonce) {
+          return {
+            content: [{
+              type: "text",
+              text: "Authentication is managed by the hosting service. Reconnect the connector in Claude's connector settings to sign in to Clio again.",
+            }],
+            isError: true,
+          };
+        }
+        // Built-in HTTP mode: return a URL for the user to visit in their browser
         try {
           const { url, nonce } = buildAuthorizationUrl(ctx.sessionId);
           ctx.setPendingNonce(nonce);
@@ -92,13 +102,13 @@ export function registerAuthTools(server: McpServer): void {
     "logout",
     { description: "Log out of Clio (clears local tokens)" },
     async () => {
-      const ctx = getSessionContext();
+      const ctx = requireSessionContext();
       try {
         const clio_user_id = ctx
-          ? ctx.getTokens()?.clio_user_id
+          ? (ctx.clioUserId ?? (await ctx.getTokens())?.clio_user_id)
           : (await loadTokens())?.clio_user_id;
         if (ctx) {
-          ctx.clearTokens();
+          await ctx.clearTokens();
         } else {
           await clearTokens();
         }

@@ -7,18 +7,20 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { registerAllTools, WRITE_TOOLS } from "../tools/index.js";
 import { buildAuthorizationUrl, exchangeCodeForTokensPure, refreshTokensPure } from "../auth/oauth.js";
+import { fetchClioWhoAmI } from "../auth/clioOAuth.js";
 import type { ClioTokens } from "../auth/oauth.js";
 import { sessionStorage, SessionContext } from "../utils/sessionContext.js";
 import { appendAuditLog } from "../utils/auditLog.js";
-import { getClioApiBaseUrl } from "../utils/clioRegion.js";
 import { createApiKeyMiddleware, resolveHttpAuthConfig, PUBLIC_PATHS } from "./httpAuth.js";
 import type { HttpAuthConfig } from "./httpAuth.js";
 
-interface SessionRecord {
+export interface SessionRecord {
   transport: StreamableHTTPServerTransport;
   mcpServer: McpServer | null;
   tokens: ClioTokens | null;
   pendingOAuthNonce: string | null;
+  /** Shared by concurrent tool calls so an expiring token is refreshed once per session. */
+  refreshInFlight: Promise<ClioTokens> | null;
   createdAt: number;
 }
 
@@ -35,25 +37,36 @@ function createMcpServer(opts: HttpServerOptions = {}): McpServer {
   return server;
 }
 
-function buildSessionContext(record: SessionRecord, sessionId: string): SessionContext {
+/** Exported for tests. */
+export function buildSessionContext(record: SessionRecord, sessionId: string): SessionContext {
   return {
     sessionId,
+    get clioUserId() { return record.tokens?.clio_user_id; },
     getAccessToken: async () => {
-      if (!record.tokens) {
+      const current = record.tokens;
+      if (!current) {
         throw new Error(
           "Not authenticated. Call the 'authenticate' tool to get a login URL, " +
           "complete OAuth in your browser, then try again."
         );
       }
-      if (Date.now() > record.tokens.expires_at - 5 * 60 * 1000) {
-        const refreshed = await refreshTokensPure(record.tokens.refresh_token);
-        record.tokens = { ...refreshed, clio_user_id: record.tokens.clio_user_id };
+      if (Date.now() > current.expires_at - 5 * 60 * 1000) {
+        if (!record.refreshInFlight) {
+          record.refreshInFlight = refreshTokensPure(current.refresh_token)
+            .then((refreshed) => {
+              record.tokens = { ...refreshed, clio_user_id: current.clio_user_id };
+              return record.tokens;
+            })
+            .finally(() => { record.refreshInFlight = null; });
+        }
+        const refreshed = await record.refreshInFlight;
+        return refreshed.access_token;
       }
-      return record.tokens.access_token;
+      return current.access_token;
     },
-    storeTokens: (tokens: ClioTokens) => { record.tokens = tokens; },
-    getTokens: () => record.tokens,
-    clearTokens: () => { record.tokens = null; },
+    storeTokens: async (tokens: ClioTokens) => { record.tokens = tokens; },
+    getTokens: async () => record.tokens,
+    clearTokens: async () => { record.tokens = null; },
     setPendingNonce: (nonce: string) => { record.pendingOAuthNonce = nonce; },
   };
 }
@@ -95,6 +108,7 @@ export function createApp(auth: HttpAuthConfig, opts: HttpServerOptions = {}): e
           mcpServer: null,
           tokens: null,
           pendingOAuthNonce: null,
+          refreshInFlight: null,
           createdAt: Date.now(),
         };
 
@@ -116,9 +130,9 @@ export function createApp(auth: HttpAuthConfig, opts: HttpServerOptions = {}): e
         const tempCtx: SessionContext = {
           sessionId: "",
           getAccessToken: async () => { throw new Error("Not authenticated"); },
-          storeTokens: () => {},
-          getTokens: () => null,
-          clearTokens: () => {},
+          storeTokens: async () => {},
+          getTokens: async () => null,
+          clearTokens: async () => {},
           setPendingNonce: () => {},
         };
 
@@ -196,15 +210,9 @@ export function createApp(auth: HttpAuthConfig, opts: HttpServerOptions = {}): e
       const redirectUri = `${(process.env.MCP_BASE_URL ?? "").trim()}/oauth/callback`;
       const tokens = await exchangeCodeForTokensPure(code, redirectUri);
 
-      // Attempt to resolve clio_user_id from who_am_i
+      // Attempt to resolve clio_user_id from who_am_i (non-fatal)
       try {
-        const meRes = await fetch(`${getClioApiBaseUrl()}/users/who_am_i.json`, {
-          headers: { Authorization: `Bearer ${tokens.access_token}` },
-        });
-        if (meRes.ok) {
-          const me = await meRes.json() as any;
-          tokens.clio_user_id = String(me.data?.id);
-        }
+        tokens.clio_user_id = (await fetchClioWhoAmI(tokens.access_token)).id;
       } catch { /* non-fatal */ }
 
       record.tokens = tokens;

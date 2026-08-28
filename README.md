@@ -593,6 +593,39 @@ We're a 7-person in-house product team building AI solutions for regulated indus
 
 ---
 
+## Using the connector as a library
+
+Everything the two transports use is exported from `@oktopeak/clio-mcp/lib`, so a service can run the same 26 tools inside its own server: its own login, its own token store, its own audit store. The public npm package and the local install are unchanged; this is the seam a hosting service builds on.
+
+```ts
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import {
+  registerAllTools, runWithSessionContext, configureAudit,
+  buildClioAuthorizeUrl, exchangeClioCode, refreshClioTokens, fetchClioWhoAmI,
+} from "@oktopeak/clio-mcp/lib";
+
+// Once at startup: send audit entries to your store instead of ~/.clio-mcp/audit.log.
+configureAudit({ sink: myAuditSink });
+
+// Per request: register the tools you want to expose, then run the MCP request
+// inside a session context that knows who the caller is and how to get a Clio token.
+const server = new McpServer({ name: "my-host", version: "1.0.0" });
+registerAllTools(server, { readOnly: false, auth: "none", exclude: ["upload_document"], complianceNotice: "..." });
+await runWithSessionContext(
+  {
+    sessionId: requestId,
+    userId, clioUserId, requestId,
+    getAccessToken: () => tokenStore.validAccessToken(userId),   // refresh with refreshClioTokens() as needed
+    getTokens: () => tokenStore.get(userId),
+    storeTokens: (t) => tokenStore.set(userId, t),
+    clearTokens: () => tokenStore.clear(userId),
+  },
+  () => transport.handleRequest(req, res, req.body)
+);
+```
+
+The Clio OAuth functions take explicit credentials and a region (`buildClioAuthorizeUrl`, `exchangeClioCode`, `refreshClioTokens`, `fetchClioWhoAmI`, plus `generateCodeVerifier` / `deriveCodeChallenge` for PKCE); nothing in the library reads `CLIO_CLIENT_ID` from the environment. Outside stdio mode the tools refuse to run without a session context, so a host can never fall back to a shared token file by accident. Types ship with the package (`build/lib.d.ts`); the exported surface is pinned by `src/__tests__/lib.test.ts`.
+
 ## Contributing
 
 Issues and pull requests welcome. If you run into a Clio API edge case this connector does not handle cleanly, open an issue with the scenario and an example request. If you add a tool, register its name in `src/tools/index.ts` (`TOOL_META`, and `WRITE_TOOLS` if it changes Clio data) so the read-only gate and the annotations cover it; `registry.test.ts` fails otherwise.

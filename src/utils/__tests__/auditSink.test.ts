@@ -44,9 +44,9 @@ function ctx(overrides: Partial<SessionContext> = {}): SessionContext {
   return {
     sessionId: "sess-1",
     getAccessToken: async () => "tok",
-    storeTokens: () => {},
-    getTokens: () => null,
-    clearTokens: () => {},
+    storeTokens: async () => {},
+    getTokens: async () => null,
+    clearTokens: async () => {},
     setPendingNonce: () => {},
     ...overrides,
   } as SessionContext;
@@ -89,7 +89,7 @@ describe("appendAuditLog through a configured sink", () => {
     const { sink, entries } = memorySink();
     configureAudit({ sink });
     await sessionStorage.run(
-      ctx({ getTokens: () => ({ access_token: "a", refresh_token: "r", expires_at: 0, clio_user_id: "from-tokens" }) }),
+      ctx({ getTokens: async () => ({ access_token: "a", refresh_token: "r", expires_at: 0, clio_user_id: "from-tokens" }) }),
       () => appendAuditLog({ tool: "list_matters", args: {}, outcome: "success" })
     );
     expect(entries[0].clio_user_id).toBe("from-tokens");
