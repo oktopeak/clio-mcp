@@ -498,16 +498,22 @@ Each entry contains:
 |---|---|
 | `timestamp` | ISO 8601 date and time of the call |
 | `session_id` | Per-session UUID (stable for the life of a stdio process; one per HTTP session) |
-| `machine_ip` | LAN IPv4 address of the host that logged the call, when detectable |
+| `machine_ip` | LAN IPv4 address of the host that logged the call. stdio mode only; inside a container the address means nothing, so it is left out |
+| `user_id` | Caller identity when a hosting service runs the connector for several people. Absent in stdio and single-key HTTP mode |
+| `request_id` | The host's request id, for matching an entry to its request log. Absent unless a host sets it |
 | `tool` | Which tool Claude invoked |
-| `args` | Arguments passed to the tool (secrets are automatically redacted) |
+| `args` | The arguments Claude passed, filtered by an allowlist (see below). Keys that were passed but are not on the list appear as `"[redacted]"` so the record still shows what was sent without containing it |
 | `outcome` | `success`, `error`, or `not_found` |
 | `error_message` | Present only when `outcome` is `error` |
 | `clio_user_id` | The Clio user whose credentials were active |
 | `matter_id` | Present for matter-specific queries |
 | `result_count` | Present for list / export tools: number of records returned |
 
-The log file is append-only and never rotated or truncated by this software. To archive old entries, use your operating system's log rotation tools (`logrotate` on Linux/Mac).
+### What is never written to the log
+
+Arguments are logged by allowlist, not by denylist. For every tool only ids, limits, dates, page tokens, enums and booleans are recorded verbatim; any other argument that was passed is replaced by `"[redacted]"`. Concretely, the log never contains: contact search queries (`search_contacts.query`), document searches (`list_documents.query`), note subjects or bodies, task names or descriptions, calendar summaries, descriptions or locations, matter descriptions or client references, time-entry or activity notes, file paths or file names, or the `list_users` name filter. The full table is `AUDIT_ARG_ALLOWLIST` in `src/utils/auditLog.ts`, and a test fails if a free-text key is ever added to it. Secret-named keys (`access_token`, `client_secret`, `password`, `token`) are masked everywhere, including inside nested objects.
+
+The log file is append-only and never rotated or truncated by this software. To archive old entries, use your operating system's log rotation tools (`logrotate` on Linux/Mac). Hosts that embed the connector as a library can replace the file with their own store through `configureAudit({ sink })`; the record format is the same.
 
 ---
 
