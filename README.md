@@ -347,20 +347,21 @@ Claude selects and calls these tools automatically based on your questions. You 
 | `auth_status` | Shows whether you are currently authenticated and when your session expires |
 | `logout` | Clears your stored credentials from this machine |
 
-### Matters (3 tools)
+### Matters (4 tools)
 
 | Tool | Inputs | What it does |
 |---|---|---|
-| `list_matters` | `status` (open/pending/closed), `limit` | Lists matters with optional status filter |
-| `get_matter` | `matter_id` | Returns full detail for a specific matter |
-| `create_matter` | `client_id`, `description`, `status`, `open_date`, `practice_area_id`, `billable`, `responsible_attorney_id`, `originating_attorney_id`, `client_reference` | Creates a new matter; status defaults to Open, billable defaults to true |
+| `list_matters` | `status` (open/pending/closed), `limit` | Lists matters with optional status filter, including custom field values |
+| `get_matter` | `matter_id` | Returns full detail for a specific matter, including its Maildrop forwarding address and custom field values |
+| `create_matter` | `client_id`, `description`, `status`, `open_date`, `practice_area_id`, `billable`, `responsible_attorney_id`, `originating_attorney_id`, `client_reference`, `custom_field_values` | Creates a new matter; status defaults to Open, billable defaults to true |
+| `update_matter` | `matter_id`, plus any of `create_matter`'s optional fields | Updates one or more fields on an existing matter, including custom field values |
 
 ### Contacts (2 tools)
 
 | Tool | Inputs | What it does |
 |---|---|---|
 | `search_contacts` | `query`, `limit`, `page_token` | Searches contacts by name, email, or company; returns a paginated envelope with `total_count`, `has_more`, and `next_page_token`; pass the token back to fetch the next page |
-| `get_contact` | `contact_id` | Returns full detail for a specific contact including all emails, phone numbers, and addresses |
+| `get_contact` | `contact_id` | Returns full detail for a specific contact including all emails, phone numbers, addresses, and custom field values |
 
 ### Documents (3 tools)
 
@@ -401,11 +402,12 @@ Claude selects and calls these tools automatically based on your questions. You 
 |---|---|---|
 | `get_billing_summary` | `matter_id` | Returns total billed, outstanding balance, and last invoice date for a matter |
 
-### Notes (1 tool)
+### Notes (2 tools)
 
 | Tool | Inputs | What it does |
 |---|---|---|
 | `create_note` | `matter_id`, `subject`, `body` | Creates a note on a matter; appears in Clio's matter timeline |
+| `list_notes` | `matter_id` or `contact_id`, `limit`, `page_token` | Lists notes on a matter or contact, including subject, detail, author, and dates |
 
 ### Users (2 tools)
 

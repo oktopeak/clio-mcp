@@ -4,10 +4,10 @@ import { clioGet, ClioApiError, extractNextPageToken } from "../utils/clioClient
 import { appendAuditLog } from "../utils/auditLog.js";
 
 const CONTACT_LIST_FIELDS =
-  "id,name,email_addresses{address,name},phone_numbers{number,name},company{id,name},type";
+  "id,name,email_addresses{address,name},phone_numbers{number,name},company{id,name},type,custom_field_values{custom_field{id,name},value}";
 
 const CONTACT_DETAIL_FIELDS =
-  "id,name,first_name,last_name,title,email_addresses{address,name},phone_numbers{number,name},company{id,name},type,created_at,updated_at,addresses{name,street,city,province,postal_code,country}";
+  "id,name,first_name,last_name,title,email_addresses{address,name},phone_numbers{number,name},company{id,name},type,created_at,updated_at,addresses{name,street,city,province,postal_code,country},custom_field_values{custom_field{id,name},value}";
 
 export function registerContactTools(server: McpServer): void {
   server.registerTool(
@@ -43,6 +43,7 @@ export function registerContactTools(server: McpServer): void {
             phone: c.phone_numbers?.[0]?.number ?? null,
             company: c.company?.name ?? null,
             type: c.type,
+            custom_field_values: c.custom_field_values ?? [],
           })),
           total_count: data.meta?.records ?? contacts.length,
           has_more: nextPageToken !== null,
@@ -90,6 +91,7 @@ export function registerContactTools(server: McpServer): void {
           })),
           created_at: c.created_at,
           updated_at: c.updated_at,
+          custom_field_values: c.custom_field_values ?? [],
         };
 
         await appendAuditLog({ tool: "get_contact", args: { contact_id }, outcome: "success" });
