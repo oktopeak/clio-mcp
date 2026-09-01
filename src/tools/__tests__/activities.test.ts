@@ -1,13 +1,20 @@
 import { vi, describe, it, expect, beforeEach } from "vitest";
 
-const { mockClioPost, mockAppendAuditLog } = vi.hoisted(() => ({
+const { mockClioGet, mockClioPost, mockAppendAuditLog } = vi.hoisted(() => ({
+  mockClioGet: vi.fn(),
   mockClioPost: vi.fn(),
   mockAppendAuditLog: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("../../utils/clioClient.js", () => ({
-  clioGet: vi.fn(),
+  clioGet: mockClioGet,
   clioPost: mockClioPost,
+  extractNextPageToken: (meta: any) => {
+    const nextUrl = meta?.paging?.next;
+    if (!nextUrl) return null;
+    try { return new URL(nextUrl).searchParams.get("page_token"); }
+    catch { return null; }
+  },
 }));
 
 vi.mock("../../utils/auditLog.js", () => ({
@@ -47,6 +54,52 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockAppendAuditLog.mockResolvedValue(undefined);
   mockClioPost.mockResolvedValue({ data: FAKE_ENTRY });
+});
+
+// ─── list_time_entries ────────────────────────────────────────────────────────
+
+describe("list_time_entries", () => {
+  it("returns has_more: false and next_page_token: null on a short final page", async () => {
+    mockClioGet.mockResolvedValue({ data: [FAKE_ENTRY], meta: { records: 1, paging: {} } });
+    const { handlers } = buildServer();
+    const result = await handlers["list_time_entries"]({ limit: 25 }) as any;
+    const parsed = JSON.parse((result as any).content[0].text);
+    expect(parsed.has_more).toBe(false);
+    expect(parsed.next_page_token).toBeNull();
+  });
+
+  it("returns has_more: true and the extracted token when a next page cursor is present", async () => {
+    const twoEntries = [FAKE_ENTRY, { ...FAKE_ENTRY, id: 100 }];
+    mockClioGet.mockResolvedValue({
+      data: twoEntries,
+      meta: { records: 10, paging: { next: "https://app.clio.com/api/v4/activities.json?page_token=abc123" } },
+    });
+    const { handlers } = buildServer();
+    const result = await handlers["list_time_entries"]({ limit: 2 }) as any;
+    const parsed = JSON.parse((result as any).content[0].text);
+    expect(parsed.has_more).toBe(true);
+    expect(parsed.next_page_token).toBe("abc123");
+  });
+
+  it("forwards page_token into the outgoing request params when supplied", async () => {
+    mockClioGet.mockResolvedValue({ data: [FAKE_ENTRY], meta: { records: 1 } });
+    const { handlers } = buildServer();
+    await handlers["list_time_entries"]({ limit: 25, page_token: "xyz" });
+    expect(mockClioGet).toHaveBeenCalledWith(
+      "/activities.json",
+      expect.objectContaining({ page_token: "xyz" }),
+    );
+  });
+
+  it("returns a JSON result with has_more: false when the page is empty, not a plain-text sentinel", async () => {
+    mockClioGet.mockResolvedValue({ data: [], meta: { records: 0, paging: {} } });
+    const { handlers } = buildServer();
+    const result = await handlers["list_time_entries"]({ limit: 25 }) as any;
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.time_entries).toEqual([]);
+    expect(parsed.has_more).toBe(false);
+    expect(parsed.next_page_token).toBeNull();
+  });
 });
 
 // ─── log_time_entry ───────────────────────────────────────────────────────────

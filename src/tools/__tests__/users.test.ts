@@ -101,10 +101,13 @@ describe("list_users", () => {
     );
   });
 
-  it("returns 'No users found.' and logs result_count 0 when API returns empty array", async () => {
+  it("returns a JSON result with has_more: false and logs result_count 0 when API returns empty array", async () => {
     mockClioGet.mockResolvedValue({ data: [] });
     const result = await handlers["list_users"]({ limit: 10 });
-    expect(result.content[0].text).toBe("No users found.");
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.users).toEqual([]);
+    expect(parsed.has_more).toBe(false);
+    expect(parsed.next_page_token).toBeNull();
     expect(mockAppendAuditLog).toHaveBeenCalledWith(
       expect.objectContaining({ outcome: "success", result_count: 0 })
     );
@@ -116,6 +119,34 @@ describe("list_users", () => {
     expect(result.isError).toBe(true);
     expect(mockAppendAuditLog).toHaveBeenCalledWith(
       expect.objectContaining({ tool: "list_users", outcome: "error", error_message: "Network timeout" })
+    );
+  });
+
+  it("returns has_more: false and next_page_token: null on a short final page", async () => {
+    mockClioGet.mockResolvedValue({ data: [{ id: 1, name: "Alice" }], meta: { records: 1, paging: {} } });
+    const result = await handlers["list_users"]({ limit: 25 }) as any;
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.has_more).toBe(false);
+    expect(parsed.next_page_token).toBeNull();
+  });
+
+  it("returns has_more: true and the extracted token when a next page cursor is present", async () => {
+    mockClioGet.mockResolvedValue({
+      data: [{ id: 1, name: "Alice" }, { id: 2, name: "Bob" }],
+      meta: { records: 10, paging: { next: "https://app.clio.com/api/v4/users.json?page_token=abc123" } },
+    });
+    const result = await handlers["list_users"]({ limit: 2 }) as any;
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.has_more).toBe(true);
+    expect(parsed.next_page_token).toBe("abc123");
+  });
+
+  it("forwards page_token into the outgoing request params when supplied", async () => {
+    mockClioGet.mockResolvedValue({ data: [{ id: 1, name: "Alice" }], meta: { records: 1 } });
+    await handlers["list_users"]({ limit: 25, page_token: "xyz" });
+    expect(mockClioGet).toHaveBeenCalledWith(
+      "/users.json",
+      expect.objectContaining({ page_token: "xyz" }),
     );
   });
 });

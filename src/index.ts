@@ -39,6 +39,10 @@ async function main() {
         const { registerMatterTools } = await import("./tools/matters.js");
         const { registerContactTools } = await import("./tools/contacts.js");
         const { registerDocumentTools } = await import("./tools/documents.js");
+        const { registerFolderTools } = await import("./tools/folders.js");
+        const { registerCustomFieldTools } = await import("./tools/customFields.js");
+        const { registerRelationshipTools } = await import("./tools/relationships.js");
+        const { registerActivitySummaryTools } = await import("./tools/activitySummary.js");
         const { registerTaskTools } = await import("./tools/tasks.js");
         const { registerCalendarTools } = await import("./tools/calendar.js");
         const { registerActivityTools } = await import("./tools/activities.js");
@@ -53,6 +57,10 @@ async function main() {
         registerMatterTools(server);
         registerContactTools(server);
         registerDocumentTools(server);
+        registerFolderTools(server);
+        registerCustomFieldTools(server);
+        registerRelationshipTools(server);
+        registerActivitySummaryTools(server);
         registerTaskTools(server);
         registerCalendarTools(server);
         registerActivityTools(server);
