@@ -46,6 +46,8 @@ const MOCK_NOTE = {
   matter: { id: 42, display_number: "00042-001" },
   contact: null,
   author: { id: 3, name: "Jane Attorney" },
+  date: "2026-04-28",
+  detail_text_type: "plain_text",
   created_at: "2026-05-01T10:00:00Z",
   updated_at: "2026-05-01T10:00:00Z",
 };
@@ -59,7 +61,14 @@ describe("list_notes", () => {
     it("returns an error and does not call clioGet when neither matter_id nor contact_id is provided", async () => {
       const result = await handlers["list_notes"]({ limit: 25 }) as any;
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toBe("Error: provide at least one of matter_id or contact_id");
+      expect(result.content[0].text).toBe("Error: provide either matter_id or contact_id");
+      expect(mockClioGet).not.toHaveBeenCalled();
+    });
+
+    it("rejects both ids rather than silently picking one", async () => {
+      const result = await handlers["list_notes"]({ matter_id: 42, contact_id: 5, limit: 25 }) as any;
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("only one of matter_id or contact_id");
       expect(mockClioGet).not.toHaveBeenCalled();
     });
   });
@@ -69,26 +78,37 @@ describe("list_notes", () => {
       mockClioGet.mockResolvedValue({ data: [MOCK_NOTE], meta: { records: 1 } });
     });
 
-    it("filters by matter_id and sends type=Matter", async () => {
+    // Clio's GET filter validates `type` and returns 422 for anything other than
+    // the lowercase forms (API changelog v4.0.10). The capitalized "Matter" used
+    // when creating a note is a different field on a different request.
+    it("filters by matter_id and sends the lowercase type Clio accepts", async () => {
       await handlers["list_notes"]({ matter_id: 42, limit: 25 });
       const params = mockClioGet.mock.calls[0][1] as Record<string, string>;
       expect(params.matter_id).toBe("42");
-      expect(params.type).toBe("Matter");
+      expect(params.type).toBe("matter");
       expect(params).not.toHaveProperty("contact_id");
     });
 
-    it("filters by contact_id and sends type=Contact", async () => {
+    it("filters by contact_id and sends the lowercase type Clio accepts", async () => {
       await handlers["list_notes"]({ contact_id: 5, limit: 25 });
       const params = mockClioGet.mock.calls[0][1] as Record<string, string>;
       expect(params.contact_id).toBe("5");
-      expect(params.type).toBe("Contact");
+      expect(params.type).toBe("contact");
       expect(params).not.toHaveProperty("matter_id");
     });
 
-    it("sends type=Matter when both matter_id and contact_id are provided", async () => {
-      await handlers["list_notes"]({ matter_id: 42, contact_id: 5, limit: 25 });
+    it("passes created_since and updated_since through for incremental sweeps", async () => {
+      await handlers["list_notes"]({ matter_id: 42, limit: 25, created_since: "2026-08-01T00:00:00Z", updated_since: "2026-08-15T00:00:00Z" });
       const params = mockClioGet.mock.calls[0][1] as Record<string, string>;
-      expect(params.type).toBe("Matter");
+      expect(params.created_since).toBe("2026-08-01T00:00:00Z");
+      expect(params.updated_since).toBe("2026-08-15T00:00:00Z");
+    });
+
+    it("requests the note's own date, not only the system timestamps", async () => {
+      await handlers["list_notes"]({ matter_id: 42, limit: 25 });
+      const params = mockClioGet.mock.calls[0][1] as Record<string, string>;
+      expect(params.fields).toContain("date");
+      expect(params.fields).toContain("detail_text_type");
     });
 
     it("includes page_token when provided", async () => {
@@ -111,6 +131,9 @@ describe("list_notes", () => {
       expect(parsed.notes[0]).toEqual({
         id: 7,
         subject: "Client call",
+        // The note's own date, which is when the thing happened. created_at is
+        // when someone typed it up, and gap detection needs the former.
+        date: "2026-04-28",
         detail: "Discussed settlement terms.",
         author: { id: 3, name: "Jane Attorney" },
         matter: { id: 42, display_number: "00042-001" },
@@ -118,6 +141,27 @@ describe("list_notes", () => {
         created_at: "2026-05-01T10:00:00Z",
         updated_at: "2026-05-01T10:00:00Z",
       });
+    });
+
+    it("returns rich-text notes as plain text and keeps the markup alongside", async () => {
+      mockClioGet.mockResolvedValue({
+        data: [{
+          ...MOCK_NOTE,
+          detail_text_type: "rich_text",
+          detail: "<p>Spoke to client.</p><ul><li>Loss was &amp;pound;4,200</li><li>Police report filed</li></ul>",
+        }],
+        meta: { records: 1 },
+      });
+      const result = await handlers["list_notes"]({ matter_id: 42, limit: 25 }) as any;
+      const note = JSON.parse(result.content[0].text).notes[0];
+      expect(note.detail).toBe("Spoke to client.\n\n- Loss was &pound;4,200\n- Police report filed");
+      expect(note.detail_html).toContain("<ul>");
+    });
+
+    it("omits detail_html for plain-text notes", async () => {
+      mockClioGet.mockResolvedValue({ data: [MOCK_NOTE], meta: { records: 1 } });
+      const result = await handlers["list_notes"]({ matter_id: 42, limit: 25 }) as any;
+      expect(JSON.parse(result.content[0].text).notes[0]).not.toHaveProperty("detail_html");
     });
 
     it("maps contact when the note is attached to a contact", async () => {

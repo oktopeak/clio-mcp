@@ -62,26 +62,43 @@ const MOCK_CONTACT = {
   updated_at: "2026-01-01T00:00:00Z",
 };
 
+const PICKLIST_VALUE = {
+  id: "picklist-55003",
+  field_name: "Intake Source",
+  field_type: "picklist",
+  value: "9002",
+  custom_field: { id: 55003 },
+  picklist_option: { id: 9002, option: "Referral" },
+};
+
 describe("search_contacts", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("maps custom_field_values from each contact in the API response", async () => {
+  it("requests picklist_option so labels are available", async () => {
+    mockClioGet.mockResolvedValue({ data: [MOCK_CONTACT], meta: { records: 1 } });
+    await handlers["search_contacts"]({ query: "Acme", limit: 25 });
+    expect(mockClioGet.mock.calls[0][1].fields).toContain("picklist_option{id,option}");
+  });
+
+  it("maps custom fields by name with a resolved picklist label", async () => {
     mockClioGet.mockResolvedValue({
-      data: [{ ...MOCK_CONTACT, custom_field_values: [{ custom_field: { id: 1, name: "Referral Source" }, value: "Web" }] }],
+      data: [{ ...MOCK_CONTACT, custom_field_values: [PICKLIST_VALUE] }],
       meta: { records: 1 },
     });
     const result = await handlers["search_contacts"]({ query: "Acme", limit: 25 }) as any;
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.contacts[0].custom_field_values).toEqual([{ custom_field: { id: 1, name: "Referral Source" }, value: "Web" }]);
+    expect(parsed.contacts[0].custom_fields).toEqual([
+      { id: "picklist-55003", field_id: 55003, name: "Intake Source", type: "picklist", value: "9002", display_value: "Referral" },
+    ]);
   });
 
-  it("falls back to an empty array when a contact has no custom_field_values", async () => {
+  it("falls back to an empty array when a contact has no custom fields", async () => {
     mockClioGet.mockResolvedValue({ data: [MOCK_CONTACT], meta: { records: 1 } });
     const result = await handlers["search_contacts"]({ query: "Acme", limit: 25 }) as any;
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.contacts[0].custom_field_values).toEqual([]);
+    expect(parsed.contacts[0].custom_fields).toEqual([]);
   });
 });
 
@@ -90,20 +107,27 @@ describe("get_contact", () => {
     vi.clearAllMocks();
   });
 
-  it("maps custom_field_values in the returned contact detail", async () => {
+  it("maps custom fields in the returned contact detail", async () => {
     mockClioGet.mockResolvedValue({
-      data: { ...MOCK_CONTACT, custom_field_values: [{ custom_field: { id: 2, name: "Intake Status" }, value: "Active" }] },
+      data: {
+        ...MOCK_CONTACT,
+        custom_field_values: [
+          { id: "text_line-2", field_name: "Intake Status", field_type: "text_line", value: "Active", custom_field: { id: 2 } },
+        ],
+      },
     });
     const result = await handlers["get_contact"]({ contact_id: 5 }) as any;
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.custom_field_values).toEqual([{ custom_field: { id: 2, name: "Intake Status" }, value: "Active" }]);
+    expect(parsed.custom_fields).toEqual([
+      { id: "text_line-2", field_id: 2, name: "Intake Status", type: "text_line", value: "Active", display_value: "Active" },
+    ]);
   });
 
-  it("falls back to an empty array when the API response omits custom_field_values", async () => {
+  it("falls back to an empty array when the API response omits custom fields", async () => {
     mockClioGet.mockResolvedValue({ data: MOCK_CONTACT });
     const result = await handlers["get_contact"]({ contact_id: 5 }) as any;
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.custom_field_values).toEqual([]);
+    expect(parsed.custom_fields).toEqual([]);
   });
 
   it("returns a not-found message for a 404 without throwing", async () => {

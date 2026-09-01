@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import z from "zod";
-import { clioGet, ClioApiError } from "../utils/clioClient.js";
+import { clioGet, ClioApiError, extractNextPageToken } from "../utils/clioClient.js";
 import { appendAuditLog } from "../utils/auditLog.js";
 
 const USER_LIST_FIELDS = "id,name,email,enabled,subscription_type,initials";
@@ -23,9 +23,10 @@ export function registerUserTools(server: McpServer): void {
           .optional()
           .describe("Return only enabled (active) accounts (omit to return all)"),
         limit: z.number().int().min(1).max(2000).default(200).describe("Max results to return (1-2000)"),
+        page_token: z.string().optional().describe("Cursor from a previous list_users response to fetch the next page"),
       },
     },
-    async ({ name, subscription_type, enabled, limit }) => {
+    async ({ name, subscription_type, enabled, limit, page_token }) => {
       try {
         const params: Record<string, string> = {
           fields: USER_LIST_FIELDS,
@@ -34,35 +35,38 @@ export function registerUserTools(server: McpServer): void {
         if (enabled !== undefined) params.enabled = String(enabled);
         if (name) params.name = name;
         if (subscription_type) params.subscription_type = subscription_type;
+        if (page_token) params.page_token = page_token;
 
         const data = await clioGet("/users.json", params);
         const users = data.data as any[];
+        const nextPageToken = users.length >= limit ? extractNextPageToken(data.meta) : null;
 
         await appendAuditLog({
           tool: "list_users",
-          args: { name, subscription_type, enabled, limit },
+          args: { name, subscription_type, enabled, limit, page_token },
           outcome: "success",
           result_count: users?.length ?? 0,
         });
 
-        if (!users || users.length === 0) {
-          return { content: [{ type: "text", text: "No users found." }] };
-        }
-
-        const result = users.map((u) => ({
-          id: u.id,
-          name: u.name,
-          email: u.email ?? null,
-          initials: u.initials ?? null,
-          subscription_type: u.subscription_type ?? null,
-          enabled: u.enabled,
-        }));
+        const result = {
+          users: users.map((u) => ({
+            id: u.id,
+            name: u.name,
+            email: u.email ?? null,
+            initials: u.initials ?? null,
+            subscription_type: u.subscription_type ?? null,
+            enabled: u.enabled,
+          })),
+          total_count: data.meta?.records ?? users.length,
+          has_more: nextPageToken !== null,
+          next_page_token: nextPageToken,
+        };
 
         return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
       } catch (err: any) {
         await appendAuditLog({
           tool: "list_users",
-          args: { name, subscription_type, enabled, limit },
+          args: { name, subscription_type, enabled, limit, page_token },
           outcome: "error",
           error_message: err.message,
         });

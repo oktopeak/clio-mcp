@@ -23,6 +23,12 @@ vi.mock("../../utils/clioClient.js", () => ({
   clioGet: mockClioGet,
   clioPatch: mockClioPatch,
   ClioApiError: MockClioApiError,
+  extractNextPageToken: (meta: any) => {
+    const nextUrl = meta?.paging?.next;
+    if (!nextUrl) return null;
+    try { return new URL(nextUrl).searchParams.get("page_token"); }
+    catch { return null; }
+  },
 }));
 
 vi.mock("../../utils/auditLog.js", () => ({
@@ -58,6 +64,21 @@ const MOCK_MATTER = {
   client_reference: null,
   open_date: "2026-05-21",
 };
+
+describe("list_matters", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns a JSON result with has_more: false when the page is empty, not a plain-text sentinel", async () => {
+    mockClioGet.mockResolvedValue({ data: [], meta: { records: 0, paging: {} } });
+    const result = await handlers["list_matters"]({ limit: 25 }) as any;
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.matters).toEqual([]);
+    expect(parsed.has_more).toBe(false);
+    expect(parsed.next_page_token).toBeNull();
+  });
+});
 
 describe("create_matter", () => {
   beforeEach(() => {
@@ -126,11 +147,13 @@ describe("create_matter", () => {
       expect(body.data.client_reference).toBe("EXT-001");
     });
 
-    it("sends custom_field_values when provided", async () => {
-      const cfv = [{ custom_field: { id: 10 }, value: "Referral" }];
+    it("sends custom fields in Clio's create shape", async () => {
+      const cfv = [{ custom_field_id: 10, value: "Referral" }];
       await handlers["create_matter"]({ ...MIN_ARGS, custom_field_values: cfv });
       const body = mockClioPost.mock.calls[0][1] as any;
-      expect(body.data.custom_field_values).toEqual(cfv);
+      // A matter being created has no existing values, so every write addresses
+      // the field definition rather than a value-instance id.
+      expect(body.data.custom_field_values).toEqual([{ custom_field: { id: 10 }, value: "Referral" }]);
     });
   });
 
@@ -171,19 +194,26 @@ describe("create_matter", () => {
   // ─── Response mapping ──────────────────────────────────────────────────────
 
   describe("response mapping", () => {
-    it("includes custom_field_values from the API response in the returned matter", async () => {
+    it("maps custom fields from the API response into the returned matter", async () => {
       mockClioPost.mockResolvedValue({
-        data: { ...MOCK_MATTER, custom_field_values: [{ custom_field: { id: 10, name: "Referral Source" }, value: "Web" }] },
+        data: {
+          ...MOCK_MATTER,
+          custom_field_values: [
+            { id: "text_line-10", field_name: "Referral Source", field_type: "text_line", value: "Web", custom_field: { id: 10 } },
+          ],
+        },
       });
       const result = await handlers["create_matter"](MIN_ARGS) as any;
       const parsed = JSON.parse(result.content[0].text);
-      expect(parsed.matter.custom_field_values).toEqual([{ custom_field: { id: 10, name: "Referral Source" }, value: "Web" }]);
+      expect(parsed.matter.custom_fields).toEqual([
+        { id: "text_line-10", field_id: 10, name: "Referral Source", type: "text_line", value: "Web", display_value: "Web" },
+      ]);
     });
 
-    it("falls back to an empty array when the API response omits custom_field_values", async () => {
+    it("falls back to an empty array when the API response omits custom fields", async () => {
       const result = await handlers["create_matter"](MIN_ARGS) as any;
       const parsed = JSON.parse(result.content[0].text);
-      expect(parsed.matter.custom_field_values).toEqual([]);
+      expect(parsed.matter.custom_fields).toEqual([]);
     });
   });
 
@@ -248,20 +278,25 @@ describe("list_matters", () => {
     vi.clearAllMocks();
   });
 
-  it("maps custom_field_values from each matter in the API response", async () => {
+  it("resolves a picklist to its label rather than the option id", async () => {
     mockClioGet.mockResolvedValue({
-      data: [{ ...MOCK_MATTER, custom_field_values: [{ custom_field: { id: 1, name: "X" }, value: 1 }] }],
+      data: [{ ...MOCK_MATTER, custom_field_values: [
+        { id: "picklist-9", field_name: "Case Type", field_type: "picklist", value: "9002", custom_field: { id: 9 }, picklist_option: { id: 9002, option: "Identity Theft" } },
+      ] }],
     });
     const result = await handlers["list_matters"]({ limit: 25 }) as any;
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed[0].custom_field_values).toEqual([{ custom_field: { id: 1, name: "X" }, value: 1 }]);
+    expect(parsed.matters[0].custom_fields[0]).toEqual({
+      id: "picklist-9", field_id: 9, name: "Case Type", type: "picklist",
+      value: "9002", display_value: "Identity Theft",
+    });
   });
 
-  it("falls back to an empty array when a matter has no custom_field_values", async () => {
+  it("falls back to an empty array when a matter has no custom fields", async () => {
     mockClioGet.mockResolvedValue({ data: [MOCK_MATTER] });
     const result = await handlers["list_matters"]({ limit: 25 }) as any;
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed[0].custom_field_values).toEqual([]);
+    expect(parsed.matters[0].custom_fields).toEqual([]);
   });
 });
 
@@ -270,13 +305,17 @@ describe("get_matter", () => {
     vi.clearAllMocks();
   });
 
-  it("maps custom_field_values in the returned matter detail", async () => {
+  it("maps custom fields in the returned matter detail", async () => {
     mockClioGet.mockResolvedValue({
-      data: { ...MOCK_MATTER, custom_field_values: [{ custom_field: { id: 2, name: "Y" }, value: true }] },
+      data: { ...MOCK_MATTER, custom_field_values: [
+        { id: "checkbox-2", field_name: "Police Report Filed", field_type: "checkbox", value: true, custom_field: { id: 2 } },
+      ] },
     });
     const result = await handlers["get_matter"]({ matter_id: 42 }) as any;
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.custom_field_values).toEqual([{ custom_field: { id: 2, name: "Y" }, value: true }]);
+    expect(parsed.custom_fields).toEqual([
+      { id: "checkbox-2", field_id: 2, name: "Police Report Filed", type: "checkbox", value: true, display_value: true },
+    ]);
   });
 });
 
@@ -344,14 +383,63 @@ describe("update_matter", () => {
       expect(mockClioPatch.mock.calls[0][1].data).toEqual({ client_reference: "EXT-2" });
     });
 
-    it("sends custom_field_values when provided, including an explicit empty array", async () => {
-      const cfv = [{ custom_field: { id: 10 }, value: "Referral" }];
-      await handlers["update_matter"]({ ...MIN_UPDATE_ARGS, custom_field_values: cfv });
-      expect(mockClioPatch.mock.calls[0][1].data).toEqual({ custom_field_values: cfv });
+    // Clio addresses an existing custom field value by its own composite id and a
+    // brand-new one by the field definition id. Sending the wrong shape is the
+    // difference between updating a value and duplicating it, so update_matter
+    // reads the record first rather than guessing.
+    describe("custom fields", () => {
+      it("addresses an existing value by its composite id and omits custom_field", async () => {
+        mockClioGet.mockResolvedValue({
+          data: { id: 42, custom_field_values: [
+            { id: "text_line-55001", field_name: "Docket Number", field_type: "text_line", value: "old", custom_field: { id: 55001 } },
+          ] },
+        });
+        await handlers["update_matter"]({ ...MIN_UPDATE_ARGS, custom_field_values: [{ custom_field_id: 55001, value: "24-cv-1234" }] });
+        expect(mockClioPatch.mock.calls[0][1].data).toEqual({
+          custom_field_values: [{ id: "text_line-55001", value: "24-cv-1234" }],
+        });
+      });
 
-      mockClioPatch.mockClear();
-      await handlers["update_matter"]({ ...MIN_UPDATE_ARGS, custom_field_values: [] });
-      expect(mockClioPatch.mock.calls[0][1].data).toEqual({ custom_field_values: [] });
+      it("addresses a field with no value yet by its definition id", async () => {
+        mockClioGet.mockResolvedValue({ data: { id: 42, custom_field_values: [] } });
+        await handlers["update_matter"]({ ...MIN_UPDATE_ARGS, custom_field_values: [{ custom_field_id: 55001, value: "24-cv-1234" }] });
+        expect(mockClioPatch.mock.calls[0][1].data).toEqual({
+          custom_field_values: [{ custom_field: { id: 55001 }, value: "24-cv-1234" }],
+        });
+      });
+
+      it("reads the matter before writing so the shape is decided from the record", async () => {
+        mockClioGet.mockResolvedValue({ data: { id: 42, custom_field_values: [] } });
+        await handlers["update_matter"]({ ...MIN_UPDATE_ARGS, custom_field_values: [{ custom_field_id: 7, value: "x" }] });
+        expect(mockClioGet).toHaveBeenCalledWith("/matters/42.json", expect.objectContaining({
+          fields: expect.stringContaining("custom_field_values"),
+        }));
+      });
+
+      it("does not read the matter when no custom fields are being written", async () => {
+        await handlers["update_matter"]({ ...MIN_UPDATE_ARGS, status: "pending" });
+        expect(mockClioGet).not.toHaveBeenCalled();
+      });
+
+      it("clears a value with _destroy against its composite id", async () => {
+        mockClioGet.mockResolvedValue({
+          data: { id: 42, custom_field_values: [
+            { id: "date-77", field_name: "Incident Date", field_type: "date", value: "2026-01-01", custom_field: { id: 77 } },
+          ] },
+        });
+        await handlers["update_matter"]({ ...MIN_UPDATE_ARGS, custom_field_values: [{ custom_field_id: 77, clear: true }] });
+        expect(mockClioPatch.mock.calls[0][1].data).toEqual({
+          custom_field_values: [{ id: "date-77", _destroy: true }],
+        });
+      });
+
+      it("errors rather than silently doing nothing when clearing a field that has no value", async () => {
+        mockClioGet.mockResolvedValue({ data: { id: 42, custom_field_values: [] } });
+        const result = await handlers["update_matter"]({ ...MIN_UPDATE_ARGS, custom_field_values: [{ custom_field_id: 77, clear: true }] }) as any;
+        expect(result.isError).toBe(true);
+        expect(result.content[0].text).toContain("no value on this record");
+        expect(mockClioPatch).not.toHaveBeenCalled();
+      });
     });
 
     it("sends only the field(s) provided, omitting all others", async () => {
@@ -366,15 +454,19 @@ describe("update_matter", () => {
   });
 
   describe("response mapping", () => {
-    it("returns the updated matter fields including custom_field_values", async () => {
+    it("returns the updated matter fields including custom fields", async () => {
       mockClioPatch.mockResolvedValue({
-        data: { ...MOCK_MATTER, custom_field_values: [{ custom_field: { id: 1, name: "X" }, value: "Y" }] },
+        data: { ...MOCK_MATTER, custom_field_values: [
+          { id: "text_line-1", field_name: "X", field_type: "text_line", value: "Y", custom_field: { id: 1 } },
+        ] },
       });
       const result = await handlers["update_matter"]({ ...MIN_UPDATE_ARGS, status: "closed" }) as any;
       const parsed = JSON.parse(result.content[0].text);
       expect(parsed.success).toBe(true);
       expect(parsed.matter.id).toBe(42);
-      expect(parsed.matter.custom_field_values).toEqual([{ custom_field: { id: 1, name: "X" }, value: "Y" }]);
+      expect(parsed.matter.custom_fields).toEqual([
+        { id: "text_line-1", field_id: 1, name: "X", type: "text_line", value: "Y", display_value: "Y" },
+      ]);
     });
   });
 
