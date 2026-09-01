@@ -21,6 +21,12 @@ vi.mock("../../utils/clioClient.js", () => ({
   clioPost: mockClioPost,
   clioGet: mockClioGet,
   ClioApiError: MockClioApiError,
+  extractNextPageToken: (meta: any) => {
+    const nextUrl = meta?.paging?.next;
+    if (!nextUrl) return null;
+    try { return new URL(nextUrl).searchParams.get("page_token"); }
+    catch { return null; }
+  },
 }));
 
 vi.mock("../../utils/auditLog.js", () => ({
@@ -56,6 +62,21 @@ const MOCK_MATTER = {
   client_reference: null,
   open_date: "2026-05-21",
 };
+
+describe("list_matters", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns a JSON result with has_more: false when the page is empty, not a plain-text sentinel", async () => {
+    mockClioGet.mockResolvedValue({ data: [], meta: { records: 0, paging: {} } });
+    const result = await handlers["list_matters"]({ limit: 25 }) as any;
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.matters).toEqual([]);
+    expect(parsed.has_more).toBe(false);
+    expect(parsed.next_page_token).toBeNull();
+  });
+});
 
 describe("create_matter", () => {
   beforeEach(() => {

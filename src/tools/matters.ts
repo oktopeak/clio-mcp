@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import z from "zod";
-import { clioGet, clioPost, ClioApiError } from "../utils/clioClient.js";
+import { clioGet, clioPost, ClioApiError, extractNextPageToken } from "../utils/clioClient.js";
 import { appendAuditLog } from "../utils/auditLog.js";
 
 const MATTER_LIST_FIELDS =
@@ -17,41 +17,45 @@ export function registerMatterTools(server: McpServer): void {
       inputSchema: {
         status: z.enum(["open", "pending", "closed"]).optional().describe("Filter by matter status"),
         limit: z.number().int().min(1).max(200).default(25).describe("Max results to return (1-200)"),
+        page_token: z.string().optional().describe("Cursor from a previous list_matters response to fetch the next page"),
       },
     },
-    async ({ status, limit }) => {
+    async ({ status, limit, page_token }) => {
       try {
         const params: Record<string, string> = {
           fields: MATTER_LIST_FIELDS,
           limit: String(limit),
         };
         if (status) params["status"] = status;
+        if (page_token) params["page_token"] = page_token;
 
         const data = await clioGet("/matters.json", params);
         const matters = data.data as any[];
+        const nextPageToken = matters.length >= limit ? extractNextPageToken(data.meta) : null;
 
-        await appendAuditLog({ tool: "list_matters", args: { status, limit }, outcome: "success", result_count: matters?.length ?? 0 });
+        await appendAuditLog({ tool: "list_matters", args: { status, limit, page_token }, outcome: "success", result_count: matters?.length ?? 0 });
 
-        if (!matters || matters.length === 0) {
-          return { content: [{ type: "text", text: "No matters found." }] };
-        }
-
-        const result = matters.map((m) => ({
-          id: m.id,
-          display_number: m.display_number,
-          description: m.description,
-          status: m.status,
-          client: m.client?.name ?? null,
-          practice_area: m.practice_area?.name ?? null,
-          open_date: m.open_date,
-          close_date: m.close_date ?? null,
-        }));
+        const result = {
+          matters: matters.map((m) => ({
+            id: m.id,
+            display_number: m.display_number,
+            description: m.description,
+            status: m.status,
+            client: m.client?.name ?? null,
+            practice_area: m.practice_area?.name ?? null,
+            open_date: m.open_date,
+            close_date: m.close_date ?? null,
+          })),
+          total_count: data.meta?.records ?? matters.length,
+          has_more: nextPageToken !== null,
+          next_page_token: nextPageToken,
+        };
 
         return {
           content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
         };
       } catch (err: any) {
-        await appendAuditLog({ tool: "list_matters", args: { status, limit }, outcome: "error", error_message: err.message });
+        await appendAuditLog({ tool: "list_matters", args: { status, limit, page_token }, outcome: "error", error_message: err.message });
         return {
           content: [{ type: "text", text: `Error: ${err.message}` }],
           isError: true,
