@@ -40,6 +40,20 @@ Watch Claude pull live data from Clio in under a minute (matters, contacts, task
 
 ---
 
+## Upgrading to 2.2.0
+
+If you installed before September 2026 you are on 2.0.1, and there is one reason to upgrade that is worth stating plainly rather than burying in a changelog.
+
+**2.0.1 writes client data to its audit log.** Contact search queries, note subjects, matter descriptions and custom field values were all recorded verbatim in `~/.clio-mcp/audit.log`. The log is a plain file that nothing rotates. In 2.2.0 audit entries carry ids, counts, dates and page tokens only, enforced by an allowlist rather than a denylist, with a test that fails if any tool ever starts logging content again.
+
+```bash
+npm install -g @oktopeak/clio-mcp@2.2.0   # or just restart Claude Desktop if you use npx
+```
+
+Your existing `~/.clio-mcp/audit.log` still contains whatever the old version put there. It is worth reading before you decide what to do with it.
+
+Also new since 2.0.1: custom fields and notes on matters and contacts, folder tools, matter relationships, a one-call activity summary across open matters, a config-level `READ_ONLY` mode, and full pagination on reads where a short answer would be a wrong one. See [CHANGELOG.md](CHANGELOG.md).
+
 ## Compliance & Security
 
 This section exists because law firms evaluating AI tools have asked the right questions. Here are direct answers.
@@ -115,7 +129,7 @@ The connector's own no-retention posture (it stores nothing but your encrypted t
 
 The connector ships as `@oktopeak/clio-mcp` on npm. Like every npm package, the published version can be updated at any time by the maintainer. Standard hygiene applies:
 
-- **Pin versions in production.** Use an exact version such as `@oktopeak/clio-mcp@2.0.1` (the current release in `package.json`) rather than a range like `^2.0.0`. Audit before upgrading.
+- **Pin versions in production.** Use an exact version such as `@oktopeak/clio-mcp@2.2.0` (the current release in `package.json`) rather than a range like `^2.0.0`. Audit before upgrading.
 - **Review the diff.** Every release is a tagged commit on GitHub. Verify changes before pulling a new version into a firm-wide deployment.
 - **Build from source.** If your firm requires it, clone the repo, audit the code, run from your own build artifact. We do not gate any feature behind the npm distribution.
 - **Maintainers.** Published by [Oktopeak](https://oktopeak.com), a public team with public commits and a public npm publisher account. Not anonymous. We respond to security reports at `office@oktopeak.com`.

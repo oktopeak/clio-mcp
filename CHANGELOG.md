@@ -4,13 +4,20 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
-## [2.2.0-beta.1] - 2026-09-02
+## [2.2.0] - 2026-09-02
 
 Two things a firm's IT or security reviewer asks for, and one that an App
 Directory listing needs.
 
-Still not exercised against a live Clio account, so this stays on the `beta`
-tag; `latest` remains 2.0.1.
+Promoted to `latest`. Until now the default install was 2.0.1, which is the
+release that writes note subjects, contact search queries and custom field
+values into `~/.clio-mcp/audit.log` in plain text. Leaving that as the version
+new users get by default was the worse of the two risks.
+
+This has not been exercised against a live Clio account on our side. Every tool
+is covered by unit tests and the stdio handshake is verified in all three modes,
+but the first real Clio data it sees will be yours. Report anything that looks
+wrong and we will turn it around quickly.
 
 ### Added
 - **Read-only mode.** `READ_ONLY=true` removes every write tool from the
