@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import z from "zod";
-import { clioGet, clioPost } from "../utils/clioClient.js";
+import { clioGet, clioPost, extractNextPageToken } from "../utils/clioClient.js";
 import { appendAuditLog } from "../utils/auditLog.js";
 
 const ACTIVITY_FIELDS = "id,date,quantity_in_hours,price,total,note,matter{id,display_number},user{id,name}";
@@ -15,9 +15,10 @@ export function registerActivityTools(server: McpServer): void {
         start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("ISO date (YYYY-MM-DD) — entries on or after this date"),
         end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("ISO date (YYYY-MM-DD) — entries on or before this date"),
         limit: z.number().int().min(1).max(200).default(25).describe("Max results to return (1-200)"),
+        page_token: z.string().optional().describe("Cursor from a previous list_time_entries response to fetch the next page"),
       },
     },
-    async ({ matter_id, start_date, end_date, limit }) => {
+    async ({ matter_id, start_date, end_date, limit, page_token }) => {
       try {
         const params: Record<string, string> = {
           fields: ACTIVITY_FIELDS,
@@ -27,38 +28,41 @@ export function registerActivityTools(server: McpServer): void {
         if (matter_id) params["matter_id"] = String(matter_id);
         if (start_date) params["start_date"] = start_date;
         if (end_date) params["end_date"] = end_date;
+        if (page_token) params["page_token"] = page_token;
 
         const data = await clioGet("/activities.json", params);
         const entries = data.data as any[];
+        const nextPageToken = entries.length >= limit ? extractNextPageToken(data.meta) : null;
 
         await appendAuditLog({
           tool: "list_time_entries",
-          args: { matter_id, start_date, end_date, limit },
+          args: { matter_id, start_date, end_date, limit, page_token },
           outcome: "success",
           result_count: entries?.length ?? 0,
           ...(matter_id && { matter_id }),
         });
 
-        if (!entries || entries.length === 0) {
-          return { content: [{ type: "text", text: "No time entries found." }] };
-        }
-
-        const result = entries.map((e) => ({
-          id: e.id,
-          date: e.date,
-          quantity_in_hours: e.quantity_in_hours,
-          rate: e.price ?? null,
-          total: e.total,
-          description: e.note ?? null,
-          matter: e.matter ? { id: e.matter.id, display_number: e.matter.display_number } : null,
-          user: e.user ? { id: e.user.id, name: e.user.name } : null,
-        }));
+        const result = {
+          time_entries: entries.map((e) => ({
+            id: e.id,
+            date: e.date,
+            quantity_in_hours: e.quantity_in_hours,
+            rate: e.price ?? null,
+            total: e.total,
+            description: e.note ?? null,
+            matter: e.matter ? { id: e.matter.id, display_number: e.matter.display_number } : null,
+            user: e.user ? { id: e.user.id, name: e.user.name } : null,
+          })),
+          total_count: data.meta?.records ?? entries.length,
+          has_more: nextPageToken !== null,
+          next_page_token: nextPageToken,
+        };
 
         return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
       } catch (err: any) {
         await appendAuditLog({
           tool: "list_time_entries",
-          args: { matter_id, start_date, end_date, limit },
+          args: { matter_id, start_date, end_date, limit, page_token },
           outcome: "error",
           error_message: err.message,
           ...(matter_id && { matter_id }),

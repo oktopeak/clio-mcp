@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import z from "zod";
-import { clioGet, clioPost } from "../utils/clioClient.js";
+import { clioGet, clioPost, extractNextPageToken } from "../utils/clioClient.js";
 import { appendAuditLog } from "../utils/auditLog.js";
 
 const CALENDAR_FIELDS = "id,summary,description,start_at,end_at,matter{id,display_number},attendees{id,name}";
@@ -20,36 +20,49 @@ export function registerCalendarTools(server: McpServer): void {
       inputSchema: {
         from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe("ISO date (YYYY-MM-DD) — range start, inclusive"),
         to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe("ISO date (YYYY-MM-DD) — range end, inclusive"),
+        limit: z.number().int().min(1).max(200).default(25).describe("Max results to return (1-200)"),
+        page_token: z.string().optional().describe("Cursor from a previous list_calendar_entries response to fetch the next page"),
       },
     },
-    async ({ from, to }) => {
+    async ({ from, to, limit, page_token }) => {
       try {
-        const data = await clioGet("/calendar_entries.json", {
+        const params: Record<string, string> = {
           from: `${from}T00:00:00Z`,
           to: `${to}T23:59:59Z`,
           fields: CALENDAR_FIELDS,
-        });
+          limit: String(limit),
+        };
+        if (page_token) params["page_token"] = page_token;
+
+        const data = await clioGet("/calendar_entries.json", params);
         const entries = data.data as any[];
+        const nextPageToken = entries.length >= limit ? extractNextPageToken(data.meta) : null;
 
-        await appendAuditLog({ tool: "list_calendar_entries", args: { from, to }, outcome: "success", result_count: entries?.length ?? 0 });
+        await appendAuditLog({
+          tool: "list_calendar_entries",
+          args: { from, to, limit, page_token },
+          outcome: "success",
+          result_count: entries?.length ?? 0,
+        });
 
-        if (!entries || entries.length === 0) {
-          return { content: [{ type: "text", text: "No calendar entries found." }] };
-        }
-
-        const result = entries.map((e) => ({
-          id: e.id,
-          summary: e.summary,
-          description: e.description ?? null,
-          start_at: e.start_at,
-          end_at: e.end_at,
-          matter: e.matter ? { id: e.matter.id, display_number: e.matter.display_number } : null,
-          attendees: (e.attendees ?? []).map((a: any) => ({ id: a.id, name: a.name })),
-        }));
+        const result = {
+          entries: entries.map((e) => ({
+            id: e.id,
+            summary: e.summary,
+            description: e.description ?? null,
+            start_at: e.start_at,
+            end_at: e.end_at,
+            matter: e.matter ? { id: e.matter.id, display_number: e.matter.display_number } : null,
+            attendees: (e.attendees ?? []).map((a: any) => ({ id: a.id, name: a.name })),
+          })),
+          total_count: data.meta?.records ?? entries.length,
+          has_more: nextPageToken !== null,
+          next_page_token: nextPageToken,
+        };
 
         return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
       } catch (err: any) {
-        await appendAuditLog({ tool: "list_calendar_entries", args: { from, to }, outcome: "error", error_message: err.message });
+        await appendAuditLog({ tool: "list_calendar_entries", args: { from, to, limit, page_token }, outcome: "error", error_message: err.message });
         return { content: [{ type: "text", text: `Error: ${err.message}` }], isError: true };
       }
     }
@@ -59,29 +72,41 @@ export function registerCalendarTools(server: McpServer): void {
     "list_calendars",
     {
       description: "List calendars available in Clio — use the returned id as calendar_owner_id when creating entries",
-      inputSchema: {},
+      inputSchema: {
+        limit: z.number().int().min(1).max(200).default(25).describe("Max results to return (1-200)"),
+        page_token: z.string().optional().describe("Cursor from a previous list_calendars response to fetch the next page"),
+      },
     },
-    async () => {
+    async ({ limit, page_token }) => {
       try {
-        const data = await clioGet("/calendars.json", { writeable: "true", fields: "id,name,type,color" });
+        const params: Record<string, string> = { writeable: "true", fields: "id,name,type,color", limit: String(limit) };
+        if (page_token) params["page_token"] = page_token;
+
+        const data = await clioGet("/calendars.json", params);
         const calendars = data.data as any[];
+        const nextPageToken = calendars.length >= limit ? extractNextPageToken(data.meta) : null;
 
-        await appendAuditLog({ tool: "list_calendars", args: {}, outcome: "success", result_count: calendars?.length ?? 0 });
+        await appendAuditLog({
+          tool: "list_calendars",
+          args: { limit, page_token },
+          outcome: "success",
+          result_count: calendars?.length ?? 0,
+        });
 
-        if (!calendars || calendars.length === 0) {
-          return { content: [{ type: "text", text: "No calendars found." }] };
-        }
-
-        const result = calendars.map((c) => ({
-          id: c.id,
-          name: c.name,
-          type: c.type ?? null,
-          color: c.color ?? null,
-        }));
+        const result = {
+          calendars: calendars.map((c) => ({
+            id: c.id,
+            name: c.name,
+            type: c.type ?? null,
+            color: c.color ?? null,
+          })),
+          has_more: nextPageToken !== null,
+          next_page_token: nextPageToken,
+        };
 
         return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
       } catch (err: any) {
-        await appendAuditLog({ tool: "list_calendars", args: {}, outcome: "error", error_message: err.message });
+        await appendAuditLog({ tool: "list_calendars", args: { limit, page_token }, outcome: "error", error_message: err.message });
         return { content: [{ type: "text", text: `Error: ${err.message}` }], isError: true };
       }
     }

@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import z from "zod";
-import { clioGet } from "../utils/clioClient.js";
+import { clioGetAllPages } from "../utils/clioClient.js";
 import { appendAuditLog } from "../utils/auditLog.js";
 
 const BILL_FIELDS = "id,number,issued_at,due_at,balance,total,state";
@@ -16,12 +16,10 @@ export function registerBillingTools(server: McpServer): void {
     },
     async ({ matter_id }) => {
       try {
-        const data = await clioGet("/bills.json", {
+        const bills = await clioGetAllPages("/bills.json", {
           matter_id: String(matter_id),
           fields: BILL_FIELDS,
-          limit: "200",
         });
-        const bills = data.data as any[];
 
         const activeBills = bills.filter((b) => b.state !== "draft" && b.state !== "void");
         const total_billed = activeBills.reduce((s: number, b: any) => s + (b.total ?? 0), 0);

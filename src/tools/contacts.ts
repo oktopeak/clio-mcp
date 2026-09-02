@@ -2,12 +2,13 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import z from "zod";
 import { clioGet, ClioApiError, extractNextPageToken } from "../utils/clioClient.js";
 import { appendAuditLog } from "../utils/auditLog.js";
+import { CUSTOM_FIELD_VALUE_FIELDS, mapCustomFieldValues } from "../utils/customFields.js";
 
 const CONTACT_LIST_FIELDS =
-  "id,name,email_addresses{address,name},phone_numbers{number,name},company{id,name},type";
+  `id,name,email_addresses{address,name},phone_numbers{number,name},company{id,name},type,${CUSTOM_FIELD_VALUE_FIELDS}`;
 
 const CONTACT_DETAIL_FIELDS =
-  "id,name,first_name,last_name,title,email_addresses{address,name},phone_numbers{number,name},company{id,name},type,created_at,updated_at,addresses{name,street,city,province,postal_code,country}";
+  `id,name,first_name,last_name,title,email_addresses{address,name},phone_numbers{number,name},company{id,name},type,created_at,updated_at,addresses{name,street,city,province,postal_code,country},${CUSTOM_FIELD_VALUE_FIELDS}`;
 
 export function registerContactTools(server: McpServer): void {
   server.registerTool(
@@ -29,7 +30,7 @@ export function registerContactTools(server: McpServer): void {
         const contacts = data.data as any[];
         const nextPageToken = contacts.length >= limit ? extractNextPageToken(data.meta) : null;
 
-        await appendAuditLog({ tool: "search_contacts", args: { query, limit, page_token }, outcome: "success", result_count: contacts?.length ?? 0 });
+        await appendAuditLog({ tool: "search_contacts", args: { limit, page_token }, outcome: "success", result_count: contacts?.length ?? 0 });
 
         if (!contacts || contacts.length === 0) {
           return { content: [{ type: "text", text: "No contacts found." }] };
@@ -43,6 +44,7 @@ export function registerContactTools(server: McpServer): void {
             phone: c.phone_numbers?.[0]?.number ?? null,
             company: c.company?.name ?? null,
             type: c.type,
+            custom_fields: mapCustomFieldValues(c.custom_field_values),
           })),
           total_count: data.meta?.records ?? contacts.length,
           has_more: nextPageToken !== null,
@@ -51,7 +53,7 @@ export function registerContactTools(server: McpServer): void {
 
         return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
       } catch (err: any) {
-        await appendAuditLog({ tool: "search_contacts", args: { query, limit, page_token }, outcome: "error", error_message: err.message });
+        await appendAuditLog({ tool: "search_contacts", args: { limit, page_token }, outcome: "error", error_message: err.message });
         return { content: [{ type: "text", text: `Error: ${err.message}` }], isError: true };
       }
     }
@@ -90,6 +92,7 @@ export function registerContactTools(server: McpServer): void {
           })),
           created_at: c.created_at,
           updated_at: c.updated_at,
+          custom_fields: mapCustomFieldValues(c.custom_field_values),
         };
 
         await appendAuditLog({ tool: "get_contact", args: { contact_id }, outcome: "success" });

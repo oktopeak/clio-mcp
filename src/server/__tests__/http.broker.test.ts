@@ -6,7 +6,7 @@ const {
   mockPollBrokerOnce,
   mockRefreshTokensViaBroker,
   mockRefreshTokensPure,
-  mockResolveClioUserId,
+  mockFetchClioWhoAmI,
   mockAppendAuditLog,
 } = vi.hoisted(() => ({
   mockIsBrokerMode: vi.fn(),
@@ -14,7 +14,7 @@ const {
   mockPollBrokerOnce: vi.fn(),
   mockRefreshTokensViaBroker: vi.fn(),
   mockRefreshTokensPure: vi.fn(),
-  mockResolveClioUserId: vi.fn().mockResolvedValue(undefined),
+  mockFetchClioWhoAmI: vi.fn().mockResolvedValue({ id: "u-broker" }),
   mockAppendAuditLog: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -26,7 +26,10 @@ vi.mock("../../auth/oauth.js", () => ({
   getBrokerUrl: mockGetBrokerUrl,
   pollBrokerOnce: mockPollBrokerOnce,
   refreshTokensViaBroker: mockRefreshTokensViaBroker,
-  resolveClioUserId: mockResolveClioUserId,
+}));
+
+vi.mock("../../auth/clioOAuth.js", () => ({
+  fetchClioWhoAmI: mockFetchClioWhoAmI,
 }));
 
 vi.mock("../../utils/auditLog.js", () => ({
@@ -46,6 +49,7 @@ function makeRecord(overrides: Partial<SessionRecord> = {}): SessionRecord {
     tokens: null,
     pendingOAuthNonce: null,
     pendingBroker: null,
+    refreshInFlight: null,
     createdAt: Date.now(),
     ...overrides,
   };
@@ -92,7 +96,8 @@ describe("getAccessToken — broker mode, no tokens yet", () => {
 
     expect(token).toBe("AT-ready");
     expect(record.pendingBroker).toBeNull();
-    expect(mockResolveClioUserId).toHaveBeenCalledWith(record.tokens);
+    expect(mockFetchClioWhoAmI).toHaveBeenCalledWith("AT-ready");
+    expect(record.tokens!.clio_user_id).toBe("u-broker");
     expect(mockAppendAuditLog).toHaveBeenCalledWith(
       expect.objectContaining({ tool: "oauth_callback", outcome: "success" })
     );

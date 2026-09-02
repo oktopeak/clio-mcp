@@ -17,15 +17,18 @@ export function registerAuthTools(server: McpServer): void {
     { description: "Check whether the connector is authenticated with Clio and when the token expires" },
     async () => {
       const ctx = requireSessionContext();
-      let tokens = ctx ? ctx.getTokens() : await loadTokens();
+      let tokens = ctx ? await ctx.getTokens() : await loadTokens();
 
-      if (ctx && !tokens && ctx.getPendingBrokerSession()) {
+      // Broker mode: a handshake still in flight has no tokens yet, and asking
+      // for an access token is what finishes it. Failure here means unfinished
+      // or dead, both of which read as unauthenticated.
+      if (ctx && !tokens && ctx.getPendingBrokerSession?.()) {
         try {
           await ctx.getAccessToken();
         } catch {
-          // still pending, or the broker session died — fall through to unauthenticated below
+          // still pending, or the broker session died
         }
-        tokens = ctx.getTokens();
+        tokens = await ctx.getTokens();
       }
 
       await appendAuditLog({
@@ -67,13 +70,23 @@ export function registerAuthTools(server: McpServer): void {
     async () => {
       const ctx = requireSessionContext();
       if (ctx) {
-        // HTTP mode: return a URL for the user to visit in their browser
+        // A host that logs users in itself leaves setPendingNonce out; there is nothing for this tool to do there.
+        if (!ctx.setPendingNonce) {
+          return {
+            content: [{
+              type: "text",
+              text: "Authentication is managed by the hosting service. Reconnect the connector in Claude's connector settings to sign in to Clio again.",
+            }],
+            isError: true,
+          };
+        }
+        // Built-in HTTP mode: return a URL for the user to visit in their browser
         try {
           if (isBrokerMode()) {
             const codeVerifier = generateCodeVerifier();
             const codeChallenge = deriveCodeChallenge(codeVerifier);
             const { sessionId: brokerSessionId, authorizeUrl } = await startBrokerLogin(codeChallenge);
-            ctx.setPendingBrokerSession({ brokerSessionId, codeVerifier });
+            ctx.setPendingBrokerSession?.({ brokerSessionId, codeVerifier });
             await appendAuditLog({ tool: "authenticate", args: {}, outcome: "success" });
             return {
               content: [{
@@ -125,11 +138,11 @@ export function registerAuthTools(server: McpServer): void {
       const ctx = requireSessionContext();
       try {
         const clio_user_id = ctx
-          ? ctx.getTokens()?.clio_user_id
+          ? (ctx.clioUserId ?? (await ctx.getTokens())?.clio_user_id)
           : (await loadTokens())?.clio_user_id;
         if (ctx) {
-          ctx.clearTokens();
-          ctx.setPendingBrokerSession(null);
+          await ctx.clearTokens();
+          ctx.setPendingBrokerSession?.(null);
         } else {
           await clearTokens();
         }

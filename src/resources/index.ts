@@ -2,7 +2,17 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { loadTokens } from "../auth/tokenStorage.js";
 import { requireSessionContext } from "../utils/sessionContext.js";
 
-export function registerResources(server: McpServer): void {
+export const DEFAULT_COMPLIANCE_NOTICE =
+  "This connector gives Claude read and limited write access to your Clio account. Every interaction — including the data retrieved and actions taken — is logged to an append-only audit file on this machine (~/.clio-mcp/audit.log) in compliance with ABA Formal Opinion 512. AI-generated content, summaries, and suggestions must be reviewed by a licensed attorney before any client-facing use. No client data is transmitted to third-party services; all data flows directly between Clio's API and your local MCP client session.";
+
+export interface RegisterResourcesOptions {
+  /** Replace the compliance notice text (hosts describe where their audit log lives). */
+  complianceNotice?: string;
+}
+
+export function registerResources(server: McpServer, opts: RegisterResourcesOptions = {}): void {
+  const notice = opts.complianceNotice ?? DEFAULT_COMPLIANCE_NOTICE;
+
   server.registerResource(
     "compliance-notice",
     "clio://compliance/notice",
@@ -12,10 +22,7 @@ export function registerResources(server: McpServer): void {
       mimeType: "text/plain",
     },
     async (uri) => ({
-      contents: [{
-        uri: uri.href,
-        text: "This connector gives Claude read and limited write access to your Clio account. Every interaction — including the data retrieved and actions taken — is logged to an append-only audit file on this machine (~/.clio-mcp/audit.log) in compliance with ABA Formal Opinion 512. AI-generated content, summaries, and suggestions must be reviewed by a licensed attorney before any client-facing use. No client data is transmitted to third-party services; all data flows directly between Clio's API and your local MCP client session.",
-      }],
+      contents: [{ uri: uri.href, text: notice }],
     })
   );
 
@@ -29,15 +36,18 @@ export function registerResources(server: McpServer): void {
     },
     async (uri) => {
       const ctx = requireSessionContext();
-      let tokens = ctx ? ctx.getTokens() : await loadTokens();
+      let tokens = ctx ? await ctx.getTokens() : await loadTokens();
 
-      if (ctx && !tokens && ctx.getPendingBrokerSession()) {
+      // Broker mode: the handshake may still be mid-flight, in which case asking
+      // for an access token is what completes it. If it is genuinely unfinished
+      // or dead, fall through and report unauthenticated rather than throwing.
+      if (ctx && !tokens && ctx.getPendingBrokerSession?.()) {
         try {
           await ctx.getAccessToken();
         } catch {
-          // still pending, or the broker session died — fall through to unauthenticated below
+          // still pending, or the broker session died
         }
-        tokens = ctx.getTokens();
+        tokens = await ctx.getTokens();
       }
 
       const payload = tokens
