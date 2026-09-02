@@ -4,6 +4,49 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [2.2.0-beta.1] - 2026-09-02
+
+Two things a firm's IT or security reviewer asks for, and one that an App
+Directory listing needs.
+
+Still not exercised against a live Clio account, so this stays on the `beta`
+tag; `latest` remains 2.0.1.
+
+### Added
+- **Read-only mode.** `READ_ONLY=true` removes every write tool from the
+  server entirely, so they are not present to be approved rather than being
+  refused when called. The distinction matters: until now the only thing
+  standing between a connector and a write was the MCP client's own approval
+  prompt, which belongs to the client and not to us.
+- **Tool registry.** A single `registerAllTools` used by stdio, the built-in
+  HTTP transport, and library consumers, which also injects a title and MCP
+  annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) on every
+  tool. A tool missing from the registry is treated as a write tool, so
+  forgetting to classify a new one fails closed.
+- **Library mode.** `@oktopeak/clio-mcp/lib` exports the Clio OAuth flow and
+  the registry with typings, for hosts that embed the connector and manage
+  their own sessions rather than shelling out to the binary.
+- **Broker OAuth mode.** With `TOKEN_BROKER_URL` set instead of
+  `CLIO_CLIENT_ID` / `CLIO_CLIENT_SECRET`, the connector holds no client
+  secret at all: it keeps a PKCE verifier locally and a hosted broker performs
+  the token exchange. This is what a one-click Clio App Directory install
+  needs. Startup validation knows which credentials each mode requires.
+- `SECURITY.md` and a security contact.
+- CI on every push and pull request, Node 20 and 22: build, type check, tests,
+  and a check that no secret ever reaches a published tarball.
+
+### Changed
+- **Audit arguments are now allowlisted rather than denylisted.** Only the
+  keys named per tool are written verbatim; anything else present becomes
+  `[redacted]`, and an unknown tool has every key redacted. The previous
+  approach masked a fixed list of secret names and copied everything else
+  through, which is the wrong default for a log that sits next to client data.
+- `DERIVED_AUDIT_KEYS` records the one deliberate exception: a tool may log a
+  summary of an argument rather than the argument, as `update_matter` logs
+  which custom fields it touched without logging what they were set to. Tests
+  require every such key to be id- or count-shaped and to actually be used.
+
+
 ## [2.1.0-beta.1] - 2026-09-01
 
 Custom fields and notes are the two things firms asked for most often, and the two
