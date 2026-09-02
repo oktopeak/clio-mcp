@@ -6,6 +6,9 @@ vi.mock("../../auth/oauth.js", () => ({
 
 vi.mock("../sessionContext.js", () => ({
   getSessionContext: vi.fn().mockReturnValue(undefined),
+  // 2.2.0 made clioClient use the fail-closed variant: null means stdio mode,
+  // where reading the shared token file is legitimate.
+  requireSessionContext: vi.fn().mockReturnValue(null),
 }));
 
 vi.mock("../clioRegion.js", () => ({

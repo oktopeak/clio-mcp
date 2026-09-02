@@ -25,3 +25,4 @@ jobs:
       - run: npm run build
       - run: npx tsc --noEmit
       - run: npm test
+      - run: npm run verify:no-secrets

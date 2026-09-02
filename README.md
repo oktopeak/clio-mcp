@@ -52,7 +52,7 @@ ABA Opinion 512 (2023) requires attorneys using AI tools to understand how those
 
 - **No data retention by the connector.** The connector does not store matter data, client names, or any Clio content. It fetches from the API and passes results to Claude. The only thing persisted locally is your authentication token, and that is encrypted (see below).
 
-- **Scope limited to tasks, notes, and document uploads.** The connector can create tasks and notes on matters, and upload documents to matters. It cannot create, edit, or delete matters, contacts, calendar entries, or billing records. This is a deliberate v1 design choice: write access is limited to the operations most useful for AI-assisted legal work while minimising liability.
+- **Nine write tools, all logged, all optional.** The connector can create matters, notes, tasks, calendar entries, time entries and activities, update and complete tasks, and upload documents. It never deletes anything and never touches contacts or billing records. Every write is recorded in the audit log, and `READ_ONLY=true` removes all nine write tools from the server entirely (see [Read-only mode](#read-only-mode)), so a firm can start with read access and turn writes on when it has decided to.
 
 ### Token security: encryption at rest
 
@@ -480,6 +480,24 @@ All settings are passed as environment variables (in your Claude Desktop config 
 | `CLIO_API_BASE` | No | `<region host>/api/v4` | Advanced override for the API base URL. Takes precedence over `CLIO_REGION` |
 | `CLIO_AUTH_URL` | No | `<region host>/oauth/authorize` | Advanced override for the OAuth authorization endpoint |
 | `CLIO_TOKEN_URL` | No | `<region host>/oauth/token` | Advanced override for the OAuth token endpoint |
+| `READ_ONLY` | No | `false` | `true`, `1` or `yes` leaves the nine write tools unregistered so Claude can read Clio but never change it. Works on both transports. See [Read-only mode](#read-only-mode) |
+
+### Read-only mode
+
+Set `READ_ONLY=true` and the connector never registers its nine write tools (`create_matter`, `create_note`, `create_task`, `update_task`, `complete_task`, `create_calendar_entry`, `log_time_entry`, `create_activity`, `upload_document`). They do not appear in Claude's tool list and a call to any of them is rejected by the server, so this is a server-side guarantee rather than a client-side prompt. The 17 read tools, the auth tools and the audit export keep working. Without it, the only thing standing between Claude and a write is the approval prompt your MCP client shows, which belongs to the client, not to this connector.
+
+For Claude Desktop, add it next to the other variables:
+
+```json
+"env": {
+  "CLIO_CLIENT_ID": "...",
+  "CLIO_CLIENT_SECRET": "...",
+  "TRANSPORT": "stdio",
+  "READ_ONLY": "true"
+}
+```
+
+Every tool also carries MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) so clients that honour them can show which calls change data before you approve them.
 
 ### Clio regions
 
@@ -508,16 +526,22 @@ Each entry contains:
 |---|---|
 | `timestamp` | ISO 8601 date and time of the call |
 | `session_id` | Per-session UUID (stable for the life of a stdio process; one per HTTP session) |
-| `machine_ip` | LAN IPv4 address of the host that logged the call, when detectable |
+| `machine_ip` | LAN IPv4 address of the host that logged the call. stdio mode only; inside a container the address means nothing, so it is left out |
+| `user_id` | Caller identity when a hosting service runs the connector for several people. Absent in stdio and single-key HTTP mode |
+| `request_id` | The host's request id, for matching an entry to its request log. Absent unless a host sets it |
 | `tool` | Which tool Claude invoked |
-| `args` | Arguments passed to the tool (secrets are automatically redacted) |
+| `args` | The arguments Claude passed, filtered by an allowlist (see below). Keys that were passed but are not on the list appear as `"[redacted]"` so the record still shows what was sent without containing it |
 | `outcome` | `success`, `error`, or `not_found` |
 | `error_message` | Present only when `outcome` is `error` |
 | `clio_user_id` | The Clio user whose credentials were active |
 | `matter_id` | Present for matter-specific queries |
 | `result_count` | Present for list / export tools: number of records returned |
 
-The log file is append-only and never rotated or truncated by this software. To archive old entries, use your operating system's log rotation tools (`logrotate` on Linux/Mac).
+### What is never written to the log
+
+Arguments are logged by allowlist, not by denylist. For every tool only ids, limits, dates, page tokens, enums and booleans are recorded verbatim; any other argument that was passed is replaced by `"[redacted]"`. Concretely, the log never contains: contact search queries (`search_contacts.query`), document searches (`list_documents.query`), note subjects or bodies, task names or descriptions, calendar summaries, descriptions or locations, matter descriptions or client references, time-entry or activity notes, file paths or file names, or the `list_users` name filter. The full table is `AUDIT_ARG_ALLOWLIST` in `src/utils/auditLog.ts`, and a test fails if a free-text key is ever added to it. Secret-named keys (`access_token`, `client_secret`, `password`, `token`) are masked everywhere, including inside nested objects.
+
+The log file is append-only and never rotated or truncated by this software. To archive old entries, use your operating system's log rotation tools (`logrotate` on Linux/Mac). Hosts that embed the connector as a library can replace the file with their own store through `configureAudit({ sink })`; the record format is the same.
 
 ---
 
@@ -597,9 +621,42 @@ We're a 7-person in-house product team building AI solutions for regulated indus
 
 ---
 
+## Using the connector as a library
+
+Everything the two transports use is exported from `@oktopeak/clio-mcp/lib`, so a service can run the same 26 tools inside its own server: its own login, its own token store, its own audit store. The public npm package and the local install are unchanged; this is the seam a hosting service builds on.
+
+```ts
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import {
+  registerAllTools, runWithSessionContext, configureAudit,
+  buildClioAuthorizeUrl, exchangeClioCode, refreshClioTokens, fetchClioWhoAmI,
+} from "@oktopeak/clio-mcp/lib";
+
+// Once at startup: send audit entries to your store instead of ~/.clio-mcp/audit.log.
+configureAudit({ sink: myAuditSink });
+
+// Per request: register the tools you want to expose, then run the MCP request
+// inside a session context that knows who the caller is and how to get a Clio token.
+const server = new McpServer({ name: "my-host", version: "1.0.0" });
+registerAllTools(server, { readOnly: false, auth: "none", exclude: ["upload_document"], complianceNotice: "..." });
+await runWithSessionContext(
+  {
+    sessionId: requestId,
+    userId, clioUserId, requestId,
+    getAccessToken: () => tokenStore.validAccessToken(userId),   // refresh with refreshClioTokens() as needed
+    getTokens: () => tokenStore.get(userId),
+    storeTokens: (t) => tokenStore.set(userId, t),
+    clearTokens: () => tokenStore.clear(userId),
+  },
+  () => transport.handleRequest(req, res, req.body)
+);
+```
+
+The Clio OAuth functions take explicit credentials and a region (`buildClioAuthorizeUrl`, `exchangeClioCode`, `refreshClioTokens`, `fetchClioWhoAmI`, plus `generateCodeVerifier` / `deriveCodeChallenge` for PKCE); nothing in the library reads `CLIO_CLIENT_ID` from the environment. Outside stdio mode the tools refuse to run without a session context, so a host can never fall back to a shared token file by accident. Types ship with the package (`build/lib.d.ts`); the exported surface is pinned by `src/__tests__/lib.test.ts`.
+
 ## Contributing
 
-Issues and pull requests welcome. If you run into a Clio API edge case this connector does not handle cleanly, open an issue with the scenario and an example request. If you want to add a tool that falls within the "read-only" v1 scope, send a PR.
+Issues and pull requests welcome. If you run into a Clio API edge case this connector does not handle cleanly, open an issue with the scenario and an example request. If you add a tool, register its name in `src/tools/index.ts` (`TOOL_META`, and `WRITE_TOOLS` if it changes Clio data) so the read-only gate and the annotations cover it; `registry.test.ts` fails otherwise.
 
 ---
 

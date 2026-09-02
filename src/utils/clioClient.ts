@@ -1,9 +1,14 @@
 import { getValidAccessToken } from "../auth/oauth.js";
-import { getSessionContext } from "./sessionContext.js";
+import { requireSessionContext } from "./sessionContext.js";
 import { getClioApiBaseUrl } from "./clioRegion.js";
 
+/**
+ * Inside a session the context supplies the token. Outside one, only stdio
+ * mode may read the shared token file; requireSessionContext() throws
+ * everywhere else so a missing context can never leak another user's identity.
+ */
 async function resolveAccessToken(): Promise<string> {
-  const ctx = getSessionContext();
+  const ctx = requireSessionContext();
   if (ctx) return ctx.getAccessToken();
   return getValidAccessToken();
 }

@@ -52,6 +52,18 @@ export function getClioRegion(env: NodeJS.ProcessEnv = process.env): ClioRegion 
   return parseClioRegion(env.CLIO_REGION);
 }
 
+/** Explicit value first, then CLIO_REGION from `env`, then the default. */
+export function resolveRegion(input?: string, env: NodeJS.ProcessEnv = process.env): ClioRegion {
+  return parseClioRegion(input ?? env.CLIO_REGION);
+}
+
+/**
+ * The URL helpers below take either a region code (pure: no env, no
+ * overrides) or a process env (today's behaviour: CLIO_REGION plus the
+ * CLIO_API_BASE / CLIO_AUTH_URL / CLIO_TOKEN_URL overrides).
+ */
+export type RegionOrEnv = ClioRegion | NodeJS.ProcessEnv;
+
 /** Regional host with scheme and no path, e.g. https://eu.app.clio.com */
 export function getClioRegionBaseUrl(env: NodeJS.ProcessEnv = process.env): string {
   return CLIO_REGION_BASE_URLS[getClioRegion(env)];
@@ -64,16 +76,19 @@ function explicitOverride(value: string | undefined): string | undefined {
 }
 
 /** API base, e.g. https://eu.app.clio.com/api/v4. CLIO_API_BASE takes precedence over the region. */
-export function getClioApiBaseUrl(env: NodeJS.ProcessEnv = process.env): string {
-  return explicitOverride(env.CLIO_API_BASE) ?? `${getClioRegionBaseUrl(env)}/api/v4`;
+export function getClioApiBaseUrl(arg: RegionOrEnv = process.env): string {
+  if (typeof arg === "string") return `${CLIO_REGION_BASE_URLS[parseClioRegion(arg)]}/api/v4`;
+  return explicitOverride(arg.CLIO_API_BASE) ?? `${getClioRegionBaseUrl(arg)}/api/v4`;
 }
 
 /** OAuth authorization endpoint. CLIO_AUTH_URL takes precedence over the region. */
-export function getClioAuthorizeUrl(env: NodeJS.ProcessEnv = process.env): string {
-  return explicitOverride(env.CLIO_AUTH_URL) ?? `${getClioRegionBaseUrl(env)}/oauth/authorize`;
+export function getClioAuthorizeUrl(arg: RegionOrEnv = process.env): string {
+  if (typeof arg === "string") return `${CLIO_REGION_BASE_URLS[parseClioRegion(arg)]}/oauth/authorize`;
+  return explicitOverride(arg.CLIO_AUTH_URL) ?? `${getClioRegionBaseUrl(arg)}/oauth/authorize`;
 }
 
 /** OAuth token endpoint. CLIO_TOKEN_URL takes precedence over the region. */
-export function getClioTokenUrl(env: NodeJS.ProcessEnv = process.env): string {
-  return explicitOverride(env.CLIO_TOKEN_URL) ?? `${getClioRegionBaseUrl(env)}/oauth/token`;
+export function getClioTokenUrl(arg: RegionOrEnv = process.env): string {
+  if (typeof arg === "string") return `${CLIO_REGION_BASE_URLS[parseClioRegion(arg)]}/oauth/token`;
+  return explicitOverride(arg.CLIO_TOKEN_URL) ?? `${getClioRegionBaseUrl(arg)}/oauth/token`;
 }

@@ -5,80 +5,68 @@ import { randomUUID, timingSafeEqual } from "crypto";
 const pkg = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8"));
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { registerAuthTools } from "../auth/authTools.js";
-import { registerResources } from "../resources/index.js";
-import { registerMatterTools } from "../tools/matters.js";
-import { registerContactTools } from "../tools/contacts.js";
-import { registerDocumentTools } from "../tools/documents.js";
-import { registerFolderTools } from "../tools/folders.js";
-import { registerCustomFieldTools } from "../tools/customFields.js";
-import { registerRelationshipTools } from "../tools/relationships.js";
-import { registerActivitySummaryTools } from "../tools/activitySummary.js";
-import { registerTaskTools } from "../tools/tasks.js";
-import { registerCalendarTools } from "../tools/calendar.js";
-import { registerActivityTools } from "../tools/activities.js";
-import { registerBillingTools } from "../tools/billing.js";
-import { registerNoteTools } from "../tools/notes.js";
-import { registerUserTools } from "../tools/users.js";
-import { registerAuditExportTool } from "../tools/auditExport.js";
-import { exchangeCodeForTokensPure, refreshTokensPure } from "../auth/oauth.js";
+import { registerAllTools, WRITE_TOOLS } from "../tools/index.js";
+import { buildAuthorizationUrl, exchangeCodeForTokensPure, refreshTokensPure } from "../auth/oauth.js";
+import { fetchClioWhoAmI } from "../auth/clioOAuth.js";
 import type { ClioTokens } from "../auth/oauth.js";
 import { sessionStorage, SessionContext } from "../utils/sessionContext.js";
 import { appendAuditLog } from "../utils/auditLog.js";
-import { getClioApiBaseUrl } from "../utils/clioRegion.js";
 import { createApiKeyMiddleware, resolveHttpAuthConfig, PUBLIC_PATHS } from "./httpAuth.js";
 import type { HttpAuthConfig } from "./httpAuth.js";
 
-interface SessionRecord {
+export interface SessionRecord {
   transport: StreamableHTTPServerTransport;
   mcpServer: McpServer | null;
   tokens: ClioTokens | null;
   pendingOAuthNonce: string | null;
+  /** Shared by concurrent tool calls so an expiring token is refreshed once per session. */
+  refreshInFlight: Promise<ClioTokens> | null;
   createdAt: number;
 }
 
 const sessions = new Map<string, SessionRecord>();
 
-function createMcpServer(): McpServer {
+export interface HttpServerOptions {
+  /** Leave the write tools unregistered for every session (READ_ONLY=true). */
+  readOnly?: boolean;
+}
+
+function createMcpServer(opts: HttpServerOptions = {}): McpServer {
   const server = new McpServer({ name: "clio-mcp", version: pkg.version });
-  registerAuthTools(server);
-  registerResources(server);
-  registerMatterTools(server);
-  registerContactTools(server);
-  registerDocumentTools(server);
-  registerFolderTools(server);
-  registerCustomFieldTools(server);
-  registerRelationshipTools(server);
-  registerActivitySummaryTools(server);
-  registerTaskTools(server);
-  registerCalendarTools(server);
-  registerActivityTools(server);
-  registerBillingTools(server);
-  registerNoteTools(server);
-  registerUserTools(server);
-  registerAuditExportTool(server);
+  registerAllTools(server, { readOnly: opts.readOnly });
   return server;
 }
 
-function buildSessionContext(record: SessionRecord, sessionId: string): SessionContext {
+/** Exported for tests. */
+export function buildSessionContext(record: SessionRecord, sessionId: string): SessionContext {
   return {
     sessionId,
+    get clioUserId() { return record.tokens?.clio_user_id; },
     getAccessToken: async () => {
-      if (!record.tokens) {
+      const current = record.tokens;
+      if (!current) {
         throw new Error(
           "Not authenticated. Call the 'authenticate' tool to get a login URL, " +
           "complete OAuth in your browser, then try again."
         );
       }
-      if (Date.now() > record.tokens.expires_at - 5 * 60 * 1000) {
-        const refreshed = await refreshTokensPure(record.tokens.refresh_token);
-        record.tokens = { ...refreshed, clio_user_id: record.tokens.clio_user_id };
+      if (Date.now() > current.expires_at - 5 * 60 * 1000) {
+        if (!record.refreshInFlight) {
+          record.refreshInFlight = refreshTokensPure(current.refresh_token)
+            .then((refreshed) => {
+              record.tokens = { ...refreshed, clio_user_id: current.clio_user_id };
+              return record.tokens;
+            })
+            .finally(() => { record.refreshInFlight = null; });
+        }
+        const refreshed = await record.refreshInFlight;
+        return refreshed.access_token;
       }
-      return record.tokens.access_token;
+      return current.access_token;
     },
-    storeTokens: (tokens: ClioTokens) => { record.tokens = tokens; },
-    getTokens: () => record.tokens,
-    clearTokens: () => { record.tokens = null; },
+    storeTokens: async (tokens: ClioTokens) => { record.tokens = tokens; },
+    getTokens: async () => record.tokens,
+    clearTokens: async () => { record.tokens = null; },
     setPendingNonce: (nonce: string) => { record.pendingOAuthNonce = nonce; },
   };
 }
@@ -100,7 +88,7 @@ setInterval(() => {
  * return 401 without a valid key. Only PUBLIC_PATHS (/health and the OAuth
  * redirect target) are reachable without it. Exported for tests.
  */
-export function createApp(auth: HttpAuthConfig): express.Express {
+export function createApp(auth: HttpAuthConfig, opts: HttpServerOptions = {}): express.Express {
   const app = express();
 
   app.use(createApiKeyMiddleware(auth));
@@ -120,13 +108,14 @@ export function createApp(auth: HttpAuthConfig): express.Express {
           mcpServer: null,
           tokens: null,
           pendingOAuthNonce: null,
+          refreshInFlight: null,
           createdAt: Date.now(),
         };
 
         const transport = new StreamableHTTPServerTransport({
           sessionIdGenerator: () => randomUUID(),
           onsessioninitialized: async (sessionId) => {
-            record.mcpServer = createMcpServer();
+            record.mcpServer = createMcpServer(opts);
             sessions.set(sessionId, record);
             await record.mcpServer.connect(transport);
           },
@@ -141,9 +130,9 @@ export function createApp(auth: HttpAuthConfig): express.Express {
         const tempCtx: SessionContext = {
           sessionId: "",
           getAccessToken: async () => { throw new Error("Not authenticated"); },
-          storeTokens: () => {},
-          getTokens: () => null,
-          clearTokens: () => {},
+          storeTokens: async () => {},
+          getTokens: async () => null,
+          clearTokens: async () => {},
           setPendingNonce: () => {},
         };
 
@@ -221,15 +210,9 @@ export function createApp(auth: HttpAuthConfig): express.Express {
       const redirectUri = `${(process.env.MCP_BASE_URL ?? "").trim()}/oauth/callback`;
       const tokens = await exchangeCodeForTokensPure(code, redirectUri);
 
-      // Attempt to resolve clio_user_id from who_am_i
+      // Attempt to resolve clio_user_id from who_am_i (non-fatal)
       try {
-        const meRes = await fetch(`${getClioApiBaseUrl()}/users/who_am_i.json`, {
-          headers: { Authorization: `Bearer ${tokens.access_token}` },
-        });
-        if (meRes.ok) {
-          const me = await meRes.json() as any;
-          tokens.clio_user_id = String(me.data?.id);
-        }
+        tokens.clio_user_id = (await fetchClioWhoAmI(tokens.access_token)).id;
       } catch { /* non-fatal */ }
 
       record.tokens = tokens;
@@ -263,14 +246,20 @@ export function createApp(auth: HttpAuthConfig): express.Express {
  * with a clear message if MCP_API_KEY is missing or too short), so the server
  * never listens in a misconfigured state.
  */
-export function startHttpServer(auth: HttpAuthConfig = resolveHttpAuthConfig()): void {
+export function startHttpServer(
+  auth: HttpAuthConfig = resolveHttpAuthConfig(),
+  opts: HttpServerOptions = {}
+): void {
   const port = parseInt(process.env.PORT ?? "3000", 10);
-  const app = createApp(auth);
+  const app = createApp(auth, opts);
   app.listen(port, () => {
     const baseUrl = (process.env.MCP_BASE_URL ?? `http://127.0.0.1:${port}`).trim();
     console.error(`[http] Clio MCP server listening on port ${port}`);
     console.error(`[http] MCP endpoint : ${baseUrl}/mcp`);
     console.error(`[http] Health check : ${baseUrl}/health`);
+    if (opts.readOnly) {
+      console.error(`[http] Tools        : READ_ONLY=true, ${WRITE_TOOLS.size} write tools not registered`);
+    }
     if (auth.apiKey === null) {
       console.error("[http] ****************************************************************************");
       console.error("[http] WARNING: MCP_ALLOW_UNAUTHENTICATED=true. NO API KEY IS REQUIRED ON ANY ROUTE.");
