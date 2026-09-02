@@ -8,7 +8,7 @@ vi.mock("@napi-rs/keyring", () => ({
   },
 }));
 
-import { redactAuditArgs, AUDIT_ARG_ALLOWLIST, REDACTED } from "../auditLog.js";
+import { redactAuditArgs, AUDIT_ARG_ALLOWLIST, DERIVED_AUDIT_KEYS, REDACTED } from "../auditLog.js";
 import { TOOL_META, REGISTRARS } from "../../tools/index.js";
 import { registerAuthTools } from "../../auth/authTools.js";
 
@@ -47,8 +47,27 @@ describe("AUDIT_ARG_ALLOWLIST", () => {
       if (tool === "oauth_callback") continue;
       expect(schemaKeys[tool], `no registrar produced "${tool}"`).toBeDefined();
       for (const k of allowed) {
+        // Derived summary keys are not inputs by construction; they get their own
+        // check below, which is stricter about what they are allowed to contain.
+        if (DERIVED_AUDIT_KEYS.has(k)) continue;
         expect(schemaKeys[tool], `${tool}.${k} is allowlisted but not in its inputSchema`).toContain(k);
       }
+    }
+  });
+
+  it("only exempts derived keys that carry ids or counts", () => {
+    // The exemption exists so a tool can log WHICH fields it touched without
+    // logging their values. If a derived key ever stops being id-shaped, that
+    // reasoning no longer holds and this fails.
+    for (const k of DERIVED_AUDIT_KEYS) {
+      expect(k, `${k} is exempt from the inputSchema check and must be ids or counts only`).toMatch(/_(id|ids|count)$/);
+    }
+  });
+
+  it("has no unused derived-key exemptions", () => {
+    const used = new Set(Object.values(AUDIT_ARG_ALLOWLIST).flat());
+    for (const k of DERIVED_AUDIT_KEYS) {
+      expect(used, `${k} is exempted but no tool logs it; drop the exemption`).toContain(k);
     }
   });
 

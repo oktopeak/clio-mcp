@@ -18,6 +18,10 @@ import { registerResources } from "../resources/index.js";
 import { registerMatterTools } from "./matters.js";
 import { registerContactTools } from "./contacts.js";
 import { registerDocumentTools } from "./documents.js";
+import { registerFolderTools } from "./folders.js";
+import { registerCustomFieldTools } from "./customFields.js";
+import { registerRelationshipTools } from "./relationships.js";
+import { registerActivitySummaryTools } from "./activitySummary.js";
 import { registerTaskTools } from "./tasks.js";
 import { registerCalendarTools } from "./calendar.js";
 import { registerActivityTools } from "./activities.js";
@@ -48,6 +52,8 @@ export const WRITE_TOOLS: ReadonlySet<string> = new Set([
   "log_time_entry",
   "create_activity",
   "create_note",
+  "update_matter",
+  "create_folder",
 ]);
 
 /** Tools that manage the connector's own Clio login rather than Clio data. */
@@ -65,6 +71,12 @@ export const TOOL_META: Readonly<Record<string, ToolMeta>> = {
   list_matters: { title: "List matters", readOnly: true },
   get_matter: { title: "Get matter", readOnly: true },
   create_matter: { title: "Create matter", readOnly: false },
+  update_matter: { title: "Update matter", readOnly: false, idempotent: true },
+  matter_activity_summary: { title: "Matter activity summary", readOnly: true },
+  // custom fields
+  list_custom_fields: { title: "List custom fields", readOnly: true },
+  // relationships
+  list_matter_relationships: { title: "List matter relationships", readOnly: true },
   // contacts
   search_contacts: { title: "Search contacts", readOnly: true },
   get_contact: { title: "Get contact", readOnly: true },
@@ -72,6 +84,10 @@ export const TOOL_META: Readonly<Record<string, ToolMeta>> = {
   list_documents: { title: "List documents", readOnly: true },
   get_document: { title: "Get document", readOnly: true },
   upload_document: { title: "Upload document", readOnly: false },
+  // folders
+  list_folders: { title: "List folders", readOnly: true },
+  folder_exists: { title: "Check whether a folder exists", readOnly: true },
+  create_folder: { title: "Create folder", readOnly: false, idempotent: true },
   // tasks
   list_tasks: { title: "List tasks", readOnly: true },
   create_task: { title: "Create task", readOnly: false },
@@ -89,6 +105,7 @@ export const TOOL_META: Readonly<Record<string, ToolMeta>> = {
   get_billing_summary: { title: "Get billing summary", readOnly: true },
   // notes
   create_note: { title: "Create note", readOnly: false },
+  list_notes: { title: "List notes", readOnly: true },
   // users
   list_users: { title: "List users", readOnly: true },
   get_user: { title: "Get user", readOnly: true },
@@ -101,6 +118,10 @@ export const REGISTRARS: ReadonlyArray<(server: McpServer) => void> = [
   registerMatterTools,
   registerContactTools,
   registerDocumentTools,
+  registerFolderTools,
+  registerCustomFieldTools,
+  registerRelationshipTools,
+  registerActivitySummaryTools,
   registerTaskTools,
   registerCalendarTools,
   registerActivityTools,

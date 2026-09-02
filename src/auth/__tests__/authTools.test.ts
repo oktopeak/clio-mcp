@@ -66,7 +66,7 @@ describe("auth_status", () => {
     const res = await runWithSessionContext(
       ctx({ getTokens: async () => ({ access_token: "a", refresh_token: "r", expires_at: Date.now() - 1, clio_user_id: "u1" }) }),
       () => handlers.auth_status()
-    );
+    ) as any;
     const body = JSON.parse(res.content[0].text);
     expect(body.authenticated).toBe(true);
     expect(body.token_expired).toBe(true);
@@ -78,7 +78,7 @@ describe("authenticate", () => {
   it("session mode with a login flow: returns the Clio URL and stores the nonce", async () => {
     process.env.TRANSPORT = "http";
     const setPendingNonce = vi.fn();
-    const res = await runWithSessionContext(ctx({ setPendingNonce }), () => handlers.authenticate());
+    const res = await runWithSessionContext(ctx({ setPendingNonce }), () => handlers.authenticate()) as any;
     expect(res.isError).toBeUndefined();
     expect(res.content[0].text).toMatch(/https:\/\/app\.clio\.com\/oauth\/authorize/);
     expect(setPendingNonce).toHaveBeenCalledTimes(1);
@@ -86,7 +86,7 @@ describe("authenticate", () => {
 
   it("session mode without a login flow (hosted): explains that the host manages login", async () => {
     process.env.TRANSPORT = "http";
-    const res = await runWithSessionContext(ctx(), () => handlers.authenticate());
+    const res = await runWithSessionContext(ctx(), () => handlers.authenticate()) as any;
     expect(res.isError).toBe(true);
     expect(res.content[0].text).toMatch(/hosting service/i);
     expect(mockGetValidAccessToken).not.toHaveBeenCalled();
@@ -108,7 +108,7 @@ describe("logout", () => {
     const res = await runWithSessionContext(
       ctx({ clearTokens: clear, getTokens: async () => ({ access_token: "a", refresh_token: "r", expires_at: 1, clio_user_id: "u2" }) }),
       () => handlers.logout()
-    );
+    ) as any;
     expect(res.isError).toBeUndefined();
     expect(clear).toHaveBeenCalledTimes(1);
     expect(mockClearTokens).not.toHaveBeenCalled();

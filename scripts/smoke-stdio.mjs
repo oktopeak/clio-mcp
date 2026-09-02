@@ -32,7 +32,11 @@ console.log(`READ_ONLY=${readOnly}: ${tools.length} tools, write tools present: 
 const res = await client.readResource({ uri: "clio://auth/status" });
 console.log("auth-status resource:", res.contents[0].text.replace(/\s+/g, " "));
 
-const expected = readOnly ? 17 : 26;
+// Derived from the built registry rather than hardcoded, so adding a tool does
+// not silently turn this smoke check into a lie about the previous count.
+const { TOOL_META, WRITE_TOOLS } = await import("../build/tools/index.js");
+const total = Object.keys(TOOL_META).length;
+const expected = readOnly ? total - WRITE_TOOLS.size : total;
 await client.close();
 if (tools.length !== expected || !annotated || (readOnly && writes.length)) {
   console.error(`FAIL: expected ${expected} tools${readOnly ? " and no write tools" : ""}`);

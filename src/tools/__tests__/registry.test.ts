@@ -22,19 +22,12 @@ import {
 } from "../index.js";
 import type { RegisterAllToolsOptions } from "../index.js";
 
-const ALL_TOOLS = [
-  "auth_status", "authenticate", "logout",
-  "list_matters", "get_matter", "create_matter",
-  "search_contacts", "get_contact",
-  "list_documents", "get_document", "upload_document",
-  "list_tasks", "create_task", "update_task", "complete_task",
-  "list_calendar_entries", "list_calendars", "create_calendar_entry",
-  "list_time_entries", "log_time_entry", "create_activity",
-  "get_billing_summary",
-  "create_note",
-  "list_users", "get_user",
-  "export_audit_log",
-].sort();
+/**
+ * Derived from TOOL_META rather than hand-listed: the invariant worth testing is
+ * that the registry, TOOL_META and what the server actually exposes agree. A
+ * literal list here only tests that someone remembered to edit two places.
+ */
+const ALL_TOOLS = Object.keys(TOOL_META).sort();
 
 async function listTools(opts?: RegisterAllToolsOptions) {
   const server = new McpServer({ name: "test", version: "0.0.0" });
@@ -48,10 +41,10 @@ async function listTools(opts?: RegisterAllToolsOptions) {
 }
 
 describe("registerAllTools", () => {
-  it("registers all 26 tools by default, in a stable set", async () => {
+  it("registers exactly the tools TOOL_META declares", async () => {
     const { tools, registered } = await listTools();
     expect(tools.map((t) => t.name).sort()).toEqual(ALL_TOOLS);
-    expect(registered.size).toBe(26);
+    expect(registered.size).toBe(ALL_TOOLS.length);
   });
 
   it("every registered tool has an entry in TOOL_META", async () => {
@@ -76,10 +69,10 @@ describe("registerAllTools", () => {
     }
   });
 
-  it("readOnly hides exactly the 9 write tools", async () => {
+  it("readOnly hides exactly the write tools", async () => {
     const { tools } = await listTools({ readOnly: true });
     const names = new Set(tools.map((t) => t.name));
-    expect(tools).toHaveLength(26 - WRITE_TOOLS.size);
+    expect(tools).toHaveLength(ALL_TOOLS.length - WRITE_TOOLS.size);
     for (const w of WRITE_TOOLS) expect(names.has(w), `${w} must be hidden`).toBe(false);
     expect(names.has("authenticate")).toBe(true);
     expect(names.has("auth_status")).toBe(true);
@@ -95,7 +88,7 @@ describe("registerAllTools", () => {
   it('auth: "status" keeps auth_status and drops the login-flow tools', async () => {
     const { tools } = await listTools({ auth: "status" });
     const names = new Set(tools.map((t) => t.name));
-    expect(tools).toHaveLength(24);
+    expect(tools).toHaveLength(ALL_TOOLS.length - 2);
     expect(names.has("auth_status")).toBe(true);
     expect(names.has("authenticate")).toBe(false);
     expect(names.has("logout")).toBe(false);
@@ -104,21 +97,21 @@ describe("registerAllTools", () => {
   it('auth: "none" drops all three auth tools', async () => {
     const { tools } = await listTools({ auth: "none" });
     const names = new Set(tools.map((t) => t.name));
-    expect(tools).toHaveLength(23);
+    expect(tools).toHaveLength(ALL_TOOLS.length - AUTH_TOOLS.size);
     for (const a of AUTH_TOOLS) expect(names.has(a)).toBe(false);
   });
 
   it("exclude leaves named tools unregistered", async () => {
     const { tools } = await listTools({ exclude: ["upload_document", "export_audit_log"] });
     const names = new Set(tools.map((t) => t.name));
-    expect(tools).toHaveLength(24);
+    expect(tools).toHaveLength(ALL_TOOLS.length - 2);
     expect(names.has("upload_document")).toBe(false);
     expect(names.has("export_audit_log")).toBe(false);
   });
 
   it("resources: false skips the resources without touching tools", async () => {
     const { client, tools } = await listTools({ resources: false });
-    expect(tools).toHaveLength(26);
+    expect(tools).toHaveLength(ALL_TOOLS.length);
     await expect(client.listResources()).rejects.toThrow();
   });
 });

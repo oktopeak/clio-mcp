@@ -97,6 +97,22 @@ export interface AuditSink {
 /** tool name -> argument keys that may be written to the log verbatim. */
 export type RedactPolicy = Readonly<Record<string, readonly string[]>>;
 
+/**
+ * Audit keys that are DERIVED from an argument rather than being one.
+ *
+ * A tool may log a summary of an input instead of the input itself. `update_matter`
+ * accepts `custom_field_values`, which carry the values a firm vets cases on, and
+ * logs `custom_field_ids`, which say which fields were touched without saying what
+ * they were set to. Such a key by definition cannot appear in the tool's
+ * inputSchema, so the "allowlisted keys must be real inputs" invariant has to be
+ * told about it.
+ *
+ * Adding a key here is deliberate and reviewable. Everything in this set must be
+ * ids or counts; `auditRedaction.test.ts` enforces that separately, so this stays
+ * a narrow exception rather than a way around the guard.
+ */
+export const DERIVED_AUDIT_KEYS: ReadonlySet<string> = new Set(["custom_field_ids"]);
+
 export const AUDIT_ARG_ALLOWLIST: RedactPolicy = {
   // auth and OAuth callback: no arguments
   auth_status: [],
@@ -106,7 +122,13 @@ export const AUDIT_ARG_ALLOWLIST: RedactPolicy = {
   // matters
   list_matters: ["status", "limit"],
   get_matter: ["matter_id"],
-  create_matter: ["client_id", "practice_area_id", "status", "open_date", "billable", "responsible_attorney_id", "originating_attorney_id"],
+  create_matter: ["client_id", "practice_area_id", "status", "open_date", "billable", "responsible_attorney_id", "originating_attorney_id", "custom_field_ids"],
+  update_matter: ["matter_id", "client_id", "practice_area_id", "status", "open_date", "billable", "responsible_attorney_id", "originating_attorney_id", "custom_field_ids"],
+  matter_activity_summary: ["lookback_days", "calendar_days_ahead", "practice_area_id", "stale_after_days", "limit"],
+  // custom fields (definitions only; a field's VALUES are client data)
+  list_custom_fields: ["parent_type", "include_deleted"],
+  // relationships (never the contact name or role label)
+  list_matter_relationships: ["matter_id", "limit", "page_token"],
   // contacts (never the query string)
   search_contacts: ["limit", "page_token"],
   get_contact: ["contact_id"],
@@ -114,6 +136,10 @@ export const AUDIT_ARG_ALLOWLIST: RedactPolicy = {
   list_documents: ["matter_id", "parent_id", "limit", "page_token"],
   get_document: ["document_id"],
   upload_document: ["matter_id", "content_type"],
+  // folders (never the folder name or the search query, which are usually client names)
+  list_folders: ["matter_id", "parent_id", "limit", "page_token"],
+  folder_exists: ["matter_id", "parent_folder_id"],
+  create_folder: ["matter_id", "parent_folder_id", "if_not_exists"],
   // tasks (never name or description)
   list_tasks: ["matter_id", "status", "due_date_start", "due_date_end", "limit"],
   create_task: ["matter_id", "priority", "due_date", "assignee_id"],
@@ -131,6 +157,7 @@ export const AUDIT_ARG_ALLOWLIST: RedactPolicy = {
   get_billing_summary: ["matter_id"],
   // notes (never subject or body)
   create_note: ["matter_id"],
+  list_notes: ["matter_id", "contact_id", "created_since", "updated_since", "limit", "page_token"],
   // users (never the name filter)
   list_users: ["subscription_type", "enabled", "limit"],
   get_user: ["user_id"],

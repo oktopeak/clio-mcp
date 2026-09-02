@@ -1,14 +1,18 @@
 name: CI
 
+# Two PRs were merged into this repository with no checks at all, because no
+# workflow existed on the default branch. Both compiled and both passed their
+# tests, but nothing on GitHub said so.
 on:
-  pull_request:
   push:
     branches: [main]
+  pull_request:
 
 jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         node: [20, 22]
     steps:
@@ -19,5 +23,6 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+      - run: npx tsc --noEmit
       - run: npm test
       - run: npm run verify:no-secrets
