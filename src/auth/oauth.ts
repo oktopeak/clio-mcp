@@ -18,6 +18,7 @@ import { singleFlight } from "../utils/singleFlight.js";
 
 export type { ClioTokens } from "./clioOAuth.js";
 export { generateCodeVerifier, deriveCodeChallenge } from "./clioOAuth.js";
+import { generateCodeVerifier, deriveCodeChallenge } from "./clioOAuth.js";
 
 function envClient() {
   return {
@@ -81,6 +82,148 @@ export async function runOAuthFlow(): Promise<ClioTokens> {
   await saveTokens(tokens);
   console.error(`[auth] ✅ Authentication successful, tokens saved.`);
   return tokens;
+}
+
+// ─── Broker mode (listed / App Directory variant) ───────────────────────────
+//
+// Used when TOKEN_BROKER_URL is set instead of CLIO_CLIENT_ID/CLIO_CLIENT_SECRET.
+// The connector never holds the shared app's client_secret — it generates a
+// PKCE verifier locally, and the hosted broker (a separate service) performs
+// the actual Clio token exchange after Clio's redirect lands on the broker's
+// own callback endpoint, not here.
+
+export function isBrokerMode(): boolean {
+  return !!(process.env.TOKEN_BROKER_URL ?? "").trim();
+}
+
+export function getBrokerUrl(): string {
+  return (process.env.TOKEN_BROKER_URL ?? "").trim().replace(/\/+$/, "");
+}
+
+// Starts a broker login session: POSTs the PKCE code_challenge to the
+// broker's /auth/start and returns the session to poll plus the URL the
+// user needs to visit to complete Clio's consent screen.
+export async function startBrokerLogin(
+  codeChallenge: string
+): Promise<{ sessionId: string; authorizeUrl: string }> {
+  const brokerUrl = getBrokerUrl();
+  const startRes = await fetch(`${brokerUrl}/auth/start`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code_challenge: codeChallenge }),
+  });
+  if (!startRes.ok) {
+    throw new Error(`Failed to start broker login (HTTP ${startRes.status}).`);
+  }
+  const { session_id: sessionId, authorize_url: authorizeUrl } = await startRes.json() as {
+    session_id: string;
+    authorize_url: string;
+  };
+  return { sessionId, authorizeUrl };
+}
+
+export type BrokerPollResult =
+  | { status: "pending" }
+  | { status: "ready"; tokens: ClioTokens };
+
+// Single, non-blocking check of a broker login session. Callers that want
+// stdio's "block until done" behavior should loop this themselves (see
+// pollBrokerForTokens below); callers on a request/response transport (e.g.
+// the HTTP server) should call this once per invocation and return control
+// immediately rather than blocking a request for minutes.
+export async function pollBrokerOnce(
+  brokerUrl: string,
+  sessionId: string,
+  codeVerifier: string
+): Promise<BrokerPollResult> {
+  const res = await fetch(`${brokerUrl}/auth/poll`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ session_id: sessionId, code_verifier: codeVerifier }),
+  });
+
+  if (res.status === 202) {
+    return { status: "pending" };
+  }
+
+  if (!res.ok) {
+    throw new Error(`Broker login failed (HTTP ${res.status}). Please try again.`);
+  }
+
+  const data = await res.json() as { access_token: string; refresh_token: string; expires_in: number };
+  return {
+    status: "ready",
+    tokens: {
+      access_token: data.access_token,
+      refresh_token: data.refresh_token,
+      expires_at: Date.now() + data.expires_in * 1000,
+    },
+  };
+}
+
+export async function runBrokerOAuthFlow(): Promise<ClioTokens> {
+  const brokerUrl = getBrokerUrl();
+  const verifier = generateCodeVerifier();
+  const challenge = deriveCodeChallenge(verifier);
+
+  const { sessionId, authorizeUrl } = await startBrokerLogin(challenge);
+
+  const { default: open } = await import("open");
+  await open(authorizeUrl);
+  console.error(`[auth] Please complete the login in your browser...`);
+
+  const tokens = await pollBrokerForTokens(brokerUrl, sessionId, verifier);
+
+  await attachUserId(tokens);
+  await saveTokens(tokens);
+  console.error(`[auth] ✅ Authentication successful, tokens saved.`);
+  return tokens;
+}
+
+async function pollBrokerForTokens(
+  brokerUrl: string,
+  sessionId: string,
+  codeVerifier: string
+): Promise<ClioTokens> {
+  const deadline = Date.now() + 5 * 60 * 1000; // same 5-minute budget as the local-callback flow
+
+  while (Date.now() < deadline) {
+    const result = await pollBrokerOnce(brokerUrl, sessionId, codeVerifier);
+
+    if (result.status === "pending") {
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      continue;
+    }
+
+    return result.tokens;
+  }
+
+  throw new Error("OAuth timeout — no response received within 5 minutes");
+}
+
+export async function refreshTokensViaBroker(refreshToken: string): Promise<ClioTokens> {
+  const brokerUrl = getBrokerUrl();
+  const res = await fetch(`${brokerUrl}/refresh`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ refresh_token: refreshToken }),
+  });
+  if (!res.ok) {
+    throw new Error("Token refresh failed, please re-authenticate.");
+  }
+  const data = await res.json() as { access_token: string; refresh_token: string; expires_in: number };
+  return {
+    access_token: data.access_token,
+    refresh_token: data.refresh_token || refreshToken,
+    expires_at: Date.now() + data.expires_in * 1000,
+  };
+}
+
+async function refreshViaBrokerAndSave(tokens: ClioTokens): Promise<ClioTokens> {
+  const refreshed = await refreshTokensViaBroker(tokens.refresh_token);
+  const newTokens: ClioTokens = { ...refreshed, clio_user_id: tokens.clio_user_id };
+  await saveTokens(newTokens);
+  return newTokens;
 }
 
 function waitForCallback(port: string, expectedState: string): Promise<string> {
@@ -168,12 +311,12 @@ async function doGetValidAccessToken(): Promise<string> {
   let tokens = await loadTokens();
 
   if (!tokens) {
-    tokens = await runOAuthFlow();
+    tokens = isBrokerMode() ? await runBrokerOAuthFlow() : await runOAuthFlow();
   }
 
   if (Date.now() > tokens.expires_at - 5 * 60 * 1000) {
     console.error("[auth] Token expiring soon, refreshing...");
-    tokens = await refreshAccessToken(tokens);
+    tokens = isBrokerMode() ? await refreshViaBrokerAndSave(tokens) : await refreshAccessToken(tokens);
   }
 
   if (!tokens.clio_user_id && !tokens.user_id_unavailable) {

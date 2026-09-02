@@ -7,6 +7,12 @@ import type { ClioTokens } from "../auth/clioOAuth.js";
  * stdio mode never establishes a context: the tools fall back to the local
  * token file there, and nowhere else.
  */
+/** Half-finished broker handshake: the PKCE verifier held between authorize and callback. */
+export interface PendingBrokerSession {
+  brokerSessionId: string;
+  codeVerifier: string;
+}
+
 export interface SessionContext {
   sessionId: string;
   /** Caller identity as known to the host (hosted deployments). Written to every audit entry. */
@@ -21,6 +27,9 @@ export interface SessionContext {
   clearTokens(): Promise<void>;
   /** Present only when this connector owns the Clio login flow (built-in HTTP mode). Hosts that log users in themselves leave it out. */
   setPendingNonce?(nonce: string): void;
+  /** Broker mode only: the PKCE verifier is parked here between authorize and callback, so the connector never needs the client secret. */
+  setPendingBrokerSession?(session: PendingBrokerSession | null): void;
+  getPendingBrokerSession?(): PendingBrokerSession | null;
 }
 
 export const sessionStorage = new AsyncLocalStorage<SessionContext>();

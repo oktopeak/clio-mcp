@@ -36,7 +36,20 @@ export function registerResources(server: McpServer, opts: RegisterResourcesOpti
     },
     async (uri) => {
       const ctx = requireSessionContext();
-      const tokens = ctx ? await ctx.getTokens() : await loadTokens();
+      let tokens = ctx ? await ctx.getTokens() : await loadTokens();
+
+      // Broker mode: the handshake may still be mid-flight, in which case asking
+      // for an access token is what completes it. If it is genuinely unfinished
+      // or dead, fall through and report unauthenticated rather than throwing.
+      if (ctx && !tokens && ctx.getPendingBrokerSession?.()) {
+        try {
+          await ctx.getAccessToken();
+        } catch {
+          // still pending, or the broker session died
+        }
+        tokens = await ctx.getTokens();
+      }
+
       const payload = tokens
         ? {
           authenticated: true,

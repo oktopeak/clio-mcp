@@ -6,10 +6,18 @@ const pkg = JSON.parse(readFileSync(new URL("../../package.json", import.meta.ur
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { registerAllTools, WRITE_TOOLS } from "../tools/index.js";
-import { buildAuthorizationUrl, exchangeCodeForTokensPure, refreshTokensPure } from "../auth/oauth.js";
+import {
+  buildAuthorizationUrl,
+  exchangeCodeForTokensPure,
+  refreshTokensPure,
+  isBrokerMode,
+  getBrokerUrl,
+  pollBrokerOnce,
+  refreshTokensViaBroker,
+} from "../auth/oauth.js";
 import { fetchClioWhoAmI } from "../auth/clioOAuth.js";
 import type { ClioTokens } from "../auth/oauth.js";
-import { sessionStorage, SessionContext } from "../utils/sessionContext.js";
+import { sessionStorage, SessionContext, PendingBrokerSession } from "../utils/sessionContext.js";
 import { appendAuditLog } from "../utils/auditLog.js";
 import { createApiKeyMiddleware, resolveHttpAuthConfig, PUBLIC_PATHS } from "./httpAuth.js";
 import type { HttpAuthConfig } from "./httpAuth.js";
@@ -19,6 +27,8 @@ export interface SessionRecord {
   mcpServer: McpServer | null;
   tokens: ClioTokens | null;
   pendingOAuthNonce: string | null;
+  /** Broker mode: the PKCE verifier parked between authorize and callback. */
+  pendingBroker: PendingBrokerSession | null;
   /** Shared by concurrent tool calls so an expiring token is refreshed once per session. */
   refreshInFlight: Promise<ClioTokens> | null;
   createdAt: number;
@@ -37,37 +47,92 @@ function createMcpServer(opts: HttpServerOptions = {}): McpServer {
   return server;
 }
 
+/**
+ * Advances a broker login that has not finished yet.
+ *
+ * A dead session (expired, forged, or already consumed) is cleared rather than
+ * retried, so the caller gets a clean "authenticate again" path instead of
+ * polling something that can never succeed.
+ */
+async function pollPendingBrokerSession(record: SessionRecord): Promise<void> {
+  const pending = record.pendingBroker;
+  if (!pending) return;
+
+  let result;
+  try {
+    result = await pollBrokerOnce(getBrokerUrl(), pending.brokerSessionId, pending.codeVerifier);
+  } catch (err: any) {
+    record.pendingBroker = null;
+    throw err;
+  }
+
+  if (result.status === "pending") {
+    throw new Error("Login is still in progress. Finish the Clio login in your browser, then try again.");
+  }
+
+  record.pendingBroker = null;
+  record.tokens = result.tokens;
+  try {
+    const me = await fetchClioWhoAmI(record.tokens.access_token);
+    if (me?.id) record.tokens.clio_user_id = String(me.id);
+  } catch { /* identity is a convenience here, not a gate */ }
+
+  await appendAuditLog({
+    tool: "oauth_callback",
+    args: {},
+    outcome: "success",
+    clio_user_id: record.tokens.clio_user_id,
+  });
+}
+
+/**
+ * Resolves a usable access token for this session, completing a broker login or
+ * refreshing an expiring token as needed. Wrapped in a single-flight guard by
+ * the caller, so concurrent tool calls share one refresh rather than racing:
+ * Clio may rotate the refresh token on use, and the loser of a race would
+ * otherwise persist a token that is already dead.
+ */
+async function doGetAccessToken(record: SessionRecord): Promise<ClioTokens> {
+  if (!record.tokens) {
+    if (isBrokerMode() && record.pendingBroker) {
+      await pollPendingBrokerSession(record);
+    } else {
+      throw new Error(
+        "Not authenticated. Call the 'authenticate' tool to get a login URL, " +
+        "complete OAuth in your browser, then try again."
+      );
+    }
+  }
+  const current = record.tokens!;
+  if (Date.now() > current.expires_at - 5 * 60 * 1000) {
+    const refreshed = isBrokerMode()
+      ? await refreshTokensViaBroker(current.refresh_token)
+      : await refreshTokensPure(current.refresh_token);
+    record.tokens = { ...refreshed, clio_user_id: current.clio_user_id };
+  }
+  return record.tokens!;
+}
+
 /** Exported for tests. */
 export function buildSessionContext(record: SessionRecord, sessionId: string): SessionContext {
   return {
     sessionId,
     get clioUserId() { return record.tokens?.clio_user_id; },
     getAccessToken: async () => {
-      const current = record.tokens;
-      if (!current) {
-        throw new Error(
-          "Not authenticated. Call the 'authenticate' tool to get a login URL, " +
-          "complete OAuth in your browser, then try again."
-        );
+      if (record.refreshInFlight) return (await record.refreshInFlight).access_token;
+      record.refreshInFlight = doGetAccessToken(record);
+      try {
+        return (await record.refreshInFlight).access_token;
+      } finally {
+        record.refreshInFlight = null;
       }
-      if (Date.now() > current.expires_at - 5 * 60 * 1000) {
-        if (!record.refreshInFlight) {
-          record.refreshInFlight = refreshTokensPure(current.refresh_token)
-            .then((refreshed) => {
-              record.tokens = { ...refreshed, clio_user_id: current.clio_user_id };
-              return record.tokens;
-            })
-            .finally(() => { record.refreshInFlight = null; });
-        }
-        const refreshed = await record.refreshInFlight;
-        return refreshed.access_token;
-      }
-      return current.access_token;
     },
     storeTokens: async (tokens: ClioTokens) => { record.tokens = tokens; },
     getTokens: async () => record.tokens,
     clearTokens: async () => { record.tokens = null; },
     setPendingNonce: (nonce: string) => { record.pendingOAuthNonce = nonce; },
+    setPendingBrokerSession: (session: PendingBrokerSession | null) => { record.pendingBroker = session; },
+    getPendingBrokerSession: () => record.pendingBroker,
   };
 }
 
@@ -108,6 +173,7 @@ export function createApp(auth: HttpAuthConfig, opts: HttpServerOptions = {}): e
           mcpServer: null,
           tokens: null,
           pendingOAuthNonce: null,
+        pendingBroker: null,
           refreshInFlight: null,
           createdAt: Date.now(),
         };
@@ -134,6 +200,8 @@ export function createApp(auth: HttpAuthConfig, opts: HttpServerOptions = {}): e
           getTokens: async () => null,
           clearTokens: async () => {},
           setPendingNonce: () => {},
+          setPendingBrokerSession: () => {},
+          getPendingBrokerSession: () => null,
         };
 
         await sessionStorage.run(tempCtx, () =>

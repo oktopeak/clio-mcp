@@ -5,6 +5,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { getClioRegion, CLIO_REGION_BASE_URLS } from './utils/clioRegion.js';
 import { resolveHttpAuthConfig } from './server/httpAuth.js';
+import { validateAuthEnv } from './config/startupValidation.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '../.env') });
@@ -16,10 +17,9 @@ function fatal(message: string): never {
 }
 
 async function main() {
-    const missing = (["CLIO_CLIENT_ID", "CLIO_CLIENT_SECRET"] as const)
-        .filter((k) => !process.env[k]);
-    if (missing.length > 0) {
-        fatal(`missing required env var(s): ${missing.join(", ")}. Check your .env file.`);
+    const authEnv = validateAuthEnv(process.env);
+    if (!authEnv.ok) {
+        fatal(authEnv.message.replace(/^\[startup\] Fatal: /, ""));
     }
 
     // Fail fast on an unknown CLIO_REGION (both transports). No silent fallback to the US endpoint.

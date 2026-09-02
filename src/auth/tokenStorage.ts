@@ -10,6 +10,8 @@ const TOKEN_FILE = path.join(TOKEN_DIR, "tokens.enc");
 const KEY_FILE = path.join(TOKEN_DIR, "key.hex");
 
 const ALGORITHM = "aes-256-gcm";
+const IV_LENGTH = 12; // NIST SP 800-38D recommends 96-bit GCM nonces
+const AUTH_TAG_LENGTH = 16;
 const KEYCHAIN_SERVICE = "clio-mcp";
 const KEYCHAIN_ACCOUNT = "encryption-key";
 
@@ -60,10 +62,11 @@ export async function getEncryptionKey(): Promise<Buffer> {
 }
 
 export async function saveTokens(tokens: ClioTokens): Promise<void> {
-  await fs.mkdir(TOKEN_DIR, { recursive: true });
+  await fs.mkdir(TOKEN_DIR, { recursive: true, mode: 0o700 });
+  await fs.chmod(TOKEN_DIR, 0o700);
 
   const key = await getEncryptionKey();
-  const iv = crypto.randomBytes(16);
+  const iv = crypto.randomBytes(IV_LENGTH);
   const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
 
   const plaintext = JSON.stringify(tokens);
@@ -74,7 +77,8 @@ export async function saveTokens(tokens: ClioTokens): Promise<void> {
   const authTag = cipher.getAuthTag();
 
   const combined = Buffer.concat([iv, authTag, encrypted]);
-  await fs.writeFile(TOKEN_FILE, combined);
+  await fs.writeFile(TOKEN_FILE, combined, { mode: 0o600 });
+  await fs.chmod(TOKEN_FILE, 0o600);
 }
 
 export async function loadTokens(): Promise<ClioTokens | null> {
@@ -88,9 +92,9 @@ export async function loadTokens(): Promise<ClioTokens | null> {
 
   try {
     const key = await getEncryptionKey();
-    const iv = combined.subarray(0, 16);
-    const authTag = combined.subarray(16, 32);
-    const encrypted = combined.subarray(32);
+    const iv = combined.subarray(0, IV_LENGTH);
+    const authTag = combined.subarray(IV_LENGTH, IV_LENGTH + AUTH_TAG_LENGTH);
+    const encrypted = combined.subarray(IV_LENGTH + AUTH_TAG_LENGTH);
 
     const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
     decipher.setAuthTag(authTag);

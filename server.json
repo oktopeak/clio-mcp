@@ -81,6 +81,30 @@
           "isSecret": false
         }
       ]
+    },
+    {
+      "registryType": "npm",
+      "identifier": "@oktopeak/clio-mcp",
+      "version": "2.0.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "TOKEN_BROKER_URL",
+          "description": "URL of Oktopeak's hosted token broker for the Clio App Directory listed install. Do not set CLIO_CLIENT_ID/CLIO_CLIENT_SECRET alongside this — the shared app's secret lives only on the broker, never on this machine.",
+          "isRequired": true,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "ENCRYPTION_KEY",
+          "description": "Optional. Leave unset to auto-generate a key stored in the OS keychain (or ~/.clio-mcp/key.hex as fallback on headless Linux/WSL2). If set, must be a 64-character hex string — it will be migrated to the OS keychain on first use.",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": true
+        }
+      ]
     }
   ]
 }

@@ -21,6 +21,7 @@ function record(expiresInMs: number): SessionRecord {
     mcpServer: null,
     tokens: { access_token: "old", refresh_token: "r0", expires_at: Date.now() + expiresInMs, clio_user_id: "u1" },
     pendingOAuthNonce: null,
+  pendingBroker: null,
     refreshInFlight: null,
     createdAt: Date.now(),
   };

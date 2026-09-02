@@ -3,9 +3,9 @@
 > ### Built by [Oktopeak](https://oktopeak.com/?utm_source=github&utm_medium=readme&utm_campaign=clio-mcp&utm_content=top-byline): AI transformation & automation for law firms
 > **Digital transformation for legal and healthcare businesses.** We build AI integrations, workflow automation, and custom software your firm owns outright, including this connector. → [Book a 30-min call](https://calendly.com/office-oktopeak/30min?utm_source=github&utm_medium=readme&utm_campaign=clio-mcp&utm_content=top-byline-call)
 
-Open-source Model Context Protocol (MCP) connector that lets Claude read live data from [Clio](https://www.clio.com) (matters, contacts, documents, tasks, calendar, and billing) without copying client information into chat windows. Built for law firms that care about attorney-client privilege, ABA Opinion 512 compliance, and keeping AI workflows inside their existing practice management stack.
+Open-source Model Context Protocol (MCP) connector that lets Claude read live data from [Clio](https://www.clio.com) (matters, custom fields, notes, contacts, documents, folders, tasks, calendar, and billing) without copying client information into chat windows. Built for law firms that care about attorney-client privilege, ABA Opinion 512 compliance, and keeping AI workflows inside their existing practice management stack.
 
-> **TL;DR:** 29 Clio tools exposed to Claude across stdio and HTTP/SSE transports. Audit-logged for ABA Opinion 512. OAuth tokens encrypted at rest with AES-256-GCM. Local-only: no relay server, no cloud middleman. MIT license, free forever.
+> **TL;DR:** 34 Clio tools exposed to Claude across stdio and HTTP/SSE transports. Audit-logged for ABA Opinion 512. OAuth tokens encrypted at rest with AES-256-GCM. Local-only by default: you register your own Clio developer app, and no relay server sits in between. A separate one-click "listed" variant for the Clio App Directory uses a minimal login-only broker instead, see [Listed / one-click install variant](#listed--one-click-install-variant-app-directory). MIT license, free forever.
 
 **Who this is for:** Law firm IT, legal operations teams, tech-forward partners, and engineers at legal tech companies. If you can follow a five-step terminal install, you can use this.
 
@@ -52,7 +52,7 @@ ABA Opinion 512 (2023) requires attorneys using AI tools to understand how those
 
 - **No data retention by the connector.** The connector does not store matter data, client names, or any Clio content. It fetches from the API and passes results to Claude. The only thing persisted locally is your authentication token, and that is encrypted (see below).
 
-- **Nine write tools, all logged, all optional.** The connector can create matters, notes, tasks, calendar entries, time entries and activities, update and complete tasks, and upload documents. It never deletes anything and never touches contacts or billing records. Every write is recorded in the audit log, and `READ_ONLY=true` removes all nine write tools from the server entirely (see [Read-only mode](#read-only-mode)), so a firm can start with read access and turn writes on when it has decided to.
+- **Eleven write tools, all logged, all optional.** The connector can create matters, notes, tasks, folders, calendar entries, time entries and activities, update matters and tasks, complete tasks, and upload documents. It never deletes anything and never touches contacts or billing records. Every write is recorded in the audit log, and `READ_ONLY=true` removes all eleven write tools from the server entirely (see [Read-only mode](#read-only-mode)), so a firm can start with read access and turn writes on when it has decided to.
 
 ### Token security: encryption at rest
 
@@ -67,6 +67,18 @@ Authentication uses Clio's standard OAuth 2.0 flow. You log in through your brow
 ### Local-first architecture
 
 The connector runs entirely on your machine. There is no Clio MCP cloud service, no relay server, no third party in the middle. Your Clio API traffic goes directly from your device to Clio's servers.
+
+This is true for the default setup below, where you register your own Clio developer application. The one-click "listed" install variant (next section) is the one exception, and only for the login step.
+
+### Listed / one-click install variant (App Directory)
+
+If you installed this connector via the Clio App Directory's one-click install instead of registering your own Clio developer application, you're using the *listed variant*. It uses one Clio application owned by Oktopeak, shared across every installing firm, instead of a separate application per firm. That means the application's `client_secret` cannot be distributed to your machine — it lives only on a small hosted token broker Oktopeak operates.
+
+**What that changes, precisely:** matter data flows directly between your machine and Clio; only the login handshake passes through our token service. Every tool call — matters, contacts, documents, tasks, calendar, billing, everything — still goes directly from your machine to Clio's API, exactly as in the BYOC setup above. The broker never sees, stores, or logs any of it; it is only involved for the few seconds it takes to complete the OAuth login (and again, briefly, on token refresh). It stores nothing durable — no tokens, no session data survive past that single handshake.
+
+Full data-flow documentation for security reviewers, including a sequence diagram and what the broker persists versus never persists, is in the token broker's repository: [`docs/DATA_FLOW.md`](https://github.com/oktopeak/clio-mcp-backend/blob/main/docs/DATA_FLOW.md).
+
+Everything else — local AES-256-GCM token encryption, the audit log, and the 26 tools — is identical to the BYOC setup. Note that Clio's OAuth doesn't support requesting a narrower scope per login; the permissions your token carries are whatever the connecting Clio application was granted when it was registered in the Clio Developer Portal. For the listed app, that registration is kept to the minimum permission set the 26 tools need — the same principle you'd apply yourself when registering your own app for the BYOC setup. See [Option C](#option-c--one-click-via-clio-app-directory) below for the resulting Claude Desktop config.
 
 ---
 
@@ -291,6 +303,27 @@ Every route that reaches the MCP server returns `401 Unauthorized` without the k
 
 **Local development only:** if you need to run the HTTP server without a key on your own machine, set `MCP_ALLOW_UNAUTHENTICATED=true`. The server starts with a loud warning and every route is open. Never use this on a public host or anywhere other people can reach the port; anyone who can reach the endpoint can drive the connector with your Clio access.
 
+#### Option C — One-click via Clio App Directory
+
+If you installed via the Clio App Directory, there's no developer application to register and no `CLIO_CLIENT_SECRET` to handle — the installer configures this for you. The resulting config uses `TOKEN_BROKER_URL` in place of `CLIO_CLIENT_ID`/`CLIO_CLIENT_SECRET`:
+
+```json
+{
+  "mcpServers": {
+    "clio": {
+      "command": "node",
+      "args": ["/FULL/PATH/TO/clio-mcp/build/index.js"],
+      "env": {
+        "TRANSPORT": "stdio",
+        "TOKEN_BROKER_URL": "https://broker.oktopeak.com"
+      }
+    }
+  }
+}
+```
+
+See [Listed / one-click install variant](#listed--one-click-install-variant-app-directory) above for what this changes about the data flow.
+
 ---
 
 If the file already has other MCP servers configured, add a comma after the last entry and then add the `"clio"` block.
@@ -467,8 +500,9 @@ All settings are passed as environment variables (in your Claude Desktop config 
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `CLIO_CLIENT_ID` | Yes | (none) | Client ID from your Clio developer application |
-| `CLIO_CLIENT_SECRET` | Yes | (none) | Client Secret from your Clio developer application |
+| `CLIO_CLIENT_ID` | Yes (BYO app) | — | Client ID from your Clio developer application. Not used, and not required, in the listed variant. |
+| `CLIO_CLIENT_SECRET` | Yes (BYO app) | — | Client Secret from your Clio developer application. Not used, and not required, in the listed variant. |
+| `TOKEN_BROKER_URL` | Yes (listed variant only) | — | URL of Oktopeak's hosted token broker. Set this INSTEAD OF `CLIO_CLIENT_ID`/`CLIO_CLIENT_SECRET` when installed via the Clio App Directory. See [Listed / one-click install variant](#listed--one-click-install-variant-app-directory). |
 | `TRANSPORT` | No | `http` | `stdio` or `http`. Defaults to `http` at v2.0.0; set to `stdio` for the pre-v2 behavior |
 | `MCP_BASE_URL` | HTTP mode | (none) | Public base URL of this server (e.g. `http://127.0.0.1:3000`). Used for the OAuth redirect |
 | `PORT` | No | `3000` | HTTP listen port (HTTP mode only) |
