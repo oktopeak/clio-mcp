@@ -1,8 +1,6 @@
 import express from "express";
 import { readFileSync } from "fs";
 import { randomUUID, timingSafeEqual } from "crypto";
-
-const pkg = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8"));
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { registerAllTools, WRITE_TOOLS } from "../tools/index.js";
@@ -21,6 +19,8 @@ import { sessionStorage, SessionContext, PendingBrokerSession } from "../utils/s
 import { appendAuditLog } from "../utils/auditLog.js";
 import { createApiKeyMiddleware, resolveHttpAuthConfig, PUBLIC_PATHS } from "./httpAuth.js";
 import type { HttpAuthConfig } from "./httpAuth.js";
+
+const pkg = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8"));
 
 export interface SessionRecord {
   transport: StreamableHTTPServerTransport;
