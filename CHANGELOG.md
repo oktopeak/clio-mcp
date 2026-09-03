@@ -4,6 +4,41 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+- **`create_custom_field`** creates a new custom field definition (Matter or
+  Contact) on the connected Clio account, closing the gap where this connector
+  could only set values on fields that already existed. The returned `id` is
+  usable immediately as `custom_field_id` in `create_matter`/`update_matter`.
+
+### Fixed
+- **Every matter and contact read (`get_matter`, `get_contact`, `search_contacts`,
+  `list_matters`, and any tool that reads custom fields) returned a Clio 400.**
+  `CUSTOM_FIELD_VALUE_FIELDS` nested `custom_field{id}` and
+  `picklist_option{id,option}` two levels deep inside `custom_field_values{...}`;
+  Clio's `fields` parameter only supports one level of `{}` nesting and rejects
+  the rest of the string once it hits a second-level brace group. Both are now
+  requested bare (`custom_field,picklist_option`), which returns Clio's default
+  attributes for each — no functionality lost, no 400. Found against a live
+  account within hours of the 2.2.0 release.
+- `list_custom_fields` now adds a setup hint when Clio returns 403 for
+  `/custom_fields.json`, since that response has been observed even with a
+  valid, account-owner token and traces to the Clio developer application
+  itself lacking custom field permission — see the new Troubleshooting entry
+  in the README.
+- **The same missing permission has a second, silent presentation**: `get_matter`,
+  `get_contact`, `search_contacts`, and `list_matters` can return `custom_fields`
+  entries with a composite `id` but `name`, `type`, and `value` all `null`,
+  with no error at all. These reads now detect that shape and add a
+  `custom_fields_warning` to the response pointing at the same fix, instead of
+  failing silently.
+- Clarified `matter_activity_summary`'s `lookback_days` description: staleness
+  is measured by a note's own event date, not when it was imported, so a
+  recently-imported note dated years earlier can legitimately push
+  `days_since_last_activity` past `lookback_days`. Also lowered the schema max
+  from 3650 to 365 days — a live account observed the tool call itself timing
+  out around 700 days, so the cap now sits at the top of the range verified to
+  complete comfortably rather than still inside the failure zone.
+
 ## [2.2.0] - 2026-09-02
 
 Two things a firm's IT or security reviewer asks for, and one that an App

@@ -44,6 +44,7 @@ export interface ToolMeta {
 /** Tools that write to Clio. Hidden entirely when READ_ONLY is on. */
 export const WRITE_TOOLS: ReadonlySet<string> = new Set([
   "create_matter",
+  "create_custom_field",
   "upload_document",
   "create_task",
   "update_task",
@@ -75,6 +76,7 @@ export const TOOL_META: Readonly<Record<string, ToolMeta>> = {
   matter_activity_summary: { title: "Matter activity summary", readOnly: true },
   // custom fields
   list_custom_fields: { title: "List custom fields", readOnly: true },
+  create_custom_field: { title: "Create custom field", readOnly: false },
   // relationships
   list_matter_relationships: { title: "List matter relationships", readOnly: true },
   // contacts

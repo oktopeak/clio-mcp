@@ -298,6 +298,26 @@ describe("list_matters", () => {
     const parsed = JSON.parse(result.content[0].text);
     expect(parsed.matters[0].custom_fields).toEqual([]);
   });
+
+  it("adds a permission-hint warning when a custom field value is stripped to its id", async () => {
+    mockClioGet.mockResolvedValue({
+      data: [{ ...MOCK_MATTER, custom_field_values: [{ id: "text_line-999" }] }],
+    });
+    const result = await handlers["list_matters"]({ limit: 25 }) as any;
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.custom_fields_warning).toMatch(/custom field permission/);
+  });
+
+  it("omits the warning when custom field values are normally populated", async () => {
+    mockClioGet.mockResolvedValue({
+      data: [{ ...MOCK_MATTER, custom_field_values: [
+        { id: "picklist-9", field_name: "Case Type", field_type: "picklist", value: "9002", custom_field: { id: 9 }, picklist_option: { id: 9002, option: "Identity Theft" } },
+      ] }],
+    });
+    const result = await handlers["list_matters"]({ limit: 25 }) as any;
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.custom_fields_warning).toBeUndefined();
+  });
 });
 
 describe("get_matter", () => {
@@ -316,6 +336,15 @@ describe("get_matter", () => {
     expect(parsed.custom_fields).toEqual([
       { id: "checkbox-2", field_id: 2, name: "Police Report Filed", type: "checkbox", value: true, display_value: true },
     ]);
+  });
+
+  it("adds a permission-hint warning when a custom field value is stripped to its id", async () => {
+    mockClioGet.mockResolvedValue({
+      data: { ...MOCK_MATTER, custom_field_values: [{ id: "checkbox-999" }] },
+    });
+    const result = await handlers["get_matter"]({ matter_id: 42 }) as any;
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.custom_fields_warning).toMatch(/custom field permission/);
   });
 });
 

@@ -77,9 +77,16 @@ export function registerActivitySummaryTools(server: McpServer): void {
           .number()
           .int()
           .min(1)
-          .max(3650)
+          .max(365)
           .default(90)
-          .describe("How far back to look for notes and time entries. A matter with nothing in this window reports null and counts as maximally stale."),
+          .describe(
+            "How far back to look for notes and time entries. A matter with nothing in this window reports null " +
+              "and counts as maximally stale. Staleness is measured by a note's own event date, not when it was " +
+              "imported into Clio, so a note created inside the window but dated years earlier can still push " +
+              "days_since_last_activity well past lookback_days - that is the event date doing its job, not a bug. " +
+              "Capped at 365: on large books (thousands of notes/time entries) longer lookbacks risk the tool " +
+              "call exceeding a client's timeout."
+          ),
         calendar_days_ahead: z
           .number()
           .int()

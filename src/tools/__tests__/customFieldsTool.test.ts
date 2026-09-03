@@ -1,12 +1,26 @@
 import { vi, describe, it, expect, beforeAll, beforeEach } from "vitest";
 
-const { mockClioGetAllPages, mockAppendAuditLog } = vi.hoisted(() => ({
-  mockClioGetAllPages: vi.fn(),
-  mockAppendAuditLog: vi.fn().mockResolvedValue(undefined),
-}));
+const { mockClioGetAllPages, mockClioPost, mockAppendAuditLog, MockClioApiError } = vi.hoisted(() => {
+  class MockClioApiError extends Error {
+    statusCode: number;
+    constructor(statusCode: number, message: string) {
+      super(message);
+      this.statusCode = statusCode;
+      this.name = "ClioApiError";
+    }
+  }
+  return {
+    mockClioGetAllPages: vi.fn(),
+    mockClioPost: vi.fn(),
+    mockAppendAuditLog: vi.fn().mockResolvedValue(undefined),
+    MockClioApiError,
+  };
+});
 
 vi.mock("../../utils/clioClient.js", () => ({
   clioGetAllPages: mockClioGetAllPages,
+  clioPost: mockClioPost,
+  ClioApiError: MockClioApiError,
 }));
 
 vi.mock("../../utils/auditLog.js", () => ({
@@ -146,6 +160,14 @@ describe("list_custom_fields", () => {
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toBe("Error: boom");
     });
+
+    it("adds a developer application permission hint on a 403", async () => {
+      mockClioGetAllPages.mockRejectedValue(new MockClioApiError(403, "User is forbidden"));
+      const result = await handlers["list_custom_fields"]({ include_deleted: false }) as any;
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("User is forbidden");
+      expect(result.content[0].text).toContain("Developer Applications");
+    });
   });
 
   describe("audit log", () => {
@@ -161,6 +183,136 @@ describe("list_custom_fields", () => {
       await handlers["list_custom_fields"]({ include_deleted: false });
       expect(mockAppendAuditLog).toHaveBeenCalledWith(
         expect.objectContaining({ tool: "list_custom_fields", outcome: "error" })
+      );
+    });
+  });
+});
+
+describe("create_custom_field", () => {
+  const BASE_INPUT = {
+    name: "Docket Number",
+    parent_type: "Matter" as const,
+    field_type: "text_line",
+    required: false,
+    displayed: true,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockClioPost.mockResolvedValue({ data: TEXT_FIELD });
+  });
+
+  describe("request payload", () => {
+    it("posts to the custom fields endpoint", async () => {
+      await handlers["create_custom_field"](BASE_INPUT);
+      expect(mockClioPost.mock.calls[0][0]).toBe("/custom_fields.json");
+    });
+
+    it("sends name, parent_type, field_type, required and displayed", async () => {
+      await handlers["create_custom_field"](BASE_INPUT);
+      expect(mockClioPost.mock.calls[0][1]).toEqual({
+        data: {
+          name: "Docket Number",
+          parent_type: "Matter",
+          field_type: "text_line",
+          required: false,
+          displayed: true,
+        },
+      });
+    });
+
+    it("omits picklist_options when none are given", async () => {
+      await handlers["create_custom_field"](BASE_INPUT);
+      expect(mockClioPost.mock.calls[0][1].data).not.toHaveProperty("picklist_options");
+    });
+
+    it("sends picklist_options as {option} entries for a picklist field", async () => {
+      await handlers["create_custom_field"]({
+        ...BASE_INPUT,
+        field_type: "picklist",
+        picklist_options: ["Credit Reporting", "Identity Theft"],
+      });
+      expect(mockClioPost.mock.calls[0][1].data.picklist_options).toEqual([
+        { option: "Credit Reporting" },
+        { option: "Identity Theft" },
+      ]);
+    });
+  });
+
+  describe("response mapping", () => {
+    it("returns the created field's id, name, type and parent_type", async () => {
+      const result = await handlers["create_custom_field"](BASE_INPUT) as any;
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.custom_field).toMatchObject({
+        id: 55001,
+        name: "Docket Number",
+        type: "text_line",
+        parent_type: "Matter",
+      });
+    });
+
+    it("includes picklist_options for a created picklist field", async () => {
+      mockClioPost.mockResolvedValue({ data: PICKLIST_FIELD });
+      const result = await handlers["create_custom_field"]({
+        ...BASE_INPUT,
+        field_type: "picklist",
+        picklist_options: ["Credit Reporting", "Identity Theft"],
+      }) as any;
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.custom_field.picklist_options).toEqual([
+        { id: 9001, option: "Credit Reporting" },
+        { id: 9002, option: "Identity Theft" },
+      ]);
+    });
+  });
+
+  describe("error handling", () => {
+    it("returns a validation error message on 422", async () => {
+      mockClioPost.mockRejectedValue(new MockClioApiError(422, "Name has already been taken"));
+      const result = await handlers["create_custom_field"](BASE_INPUT) as any;
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toBe("Validation error: Name has already been taken");
+    });
+
+    it("adds a developer application permission hint on a 403", async () => {
+      mockClioPost.mockRejectedValue(new MockClioApiError(403, "User is forbidden"));
+      const result = await handlers["create_custom_field"](BASE_INPUT) as any;
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("User is forbidden");
+      expect(result.content[0].text).toContain("Developer Applications");
+    });
+
+    it("returns a generic error result rather than throwing", async () => {
+      mockClioPost.mockRejectedValue(new Error("boom"));
+      const result = await handlers["create_custom_field"](BASE_INPUT) as any;
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toBe("Error: boom");
+    });
+  });
+
+  describe("audit log", () => {
+    it("logs the call with field metadata but no values", async () => {
+      await handlers["create_custom_field"](BASE_INPUT);
+      expect(mockAppendAuditLog).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tool: "create_custom_field",
+          outcome: "success",
+          args: expect.objectContaining({ parent_type: "Matter", field_type: "text_line" }),
+        })
+      );
+    });
+
+    it("never logs the field's name", async () => {
+      await handlers["create_custom_field"](BASE_INPUT);
+      const entry = mockAppendAuditLog.mock.calls.at(-1)![0];
+      expect(entry.args).not.toHaveProperty("name");
+    });
+
+    it("logs failures too", async () => {
+      mockClioPost.mockRejectedValue(new Error("boom"));
+      await handlers["create_custom_field"](BASE_INPUT);
+      expect(mockAppendAuditLog).toHaveBeenCalledWith(
+        expect.objectContaining({ tool: "create_custom_field", outcome: "error" })
       );
     });
   });

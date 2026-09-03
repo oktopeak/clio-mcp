@@ -3,6 +3,7 @@ import {
   mapCustomFieldValues,
   buildCustomFieldWrites,
   customFieldIdsForAudit,
+  hasStrippedCustomFieldValues,
   CUSTOM_FIELD_VALUE_FIELDS,
 } from "../customFields.js";
 
@@ -27,9 +28,17 @@ describe("CUSTOM_FIELD_VALUE_FIELDS", () => {
   it("asks for everything needed to read a field without a second call", () => {
     // Without picklist_option a picklist reads back as a bare option id, and
     // without field_type the caller cannot tell a currency from a text field.
-    for (const part of ["field_name", "field_type", "value", "picklist_option{id,option}"]) {
+    for (const part of ["field_name", "field_type", "value", "custom_field", "picklist_option"]) {
       expect(CUSTOM_FIELD_VALUE_FIELDS).toContain(part);
     }
+  });
+
+  it("never nests a second level of {} inside custom_field_values, which Clio rejects with a 400", () => {
+    // custom_field and picklist_option must be bare (default attributes), not
+    // custom_field{id} / picklist_option{id,option} - Clio's fields parameter
+    // supports only one level of curly-brace nesting.
+    expect(CUSTOM_FIELD_VALUE_FIELDS).not.toContain("custom_field{");
+    expect(CUSTOM_FIELD_VALUE_FIELDS).not.toContain("picklist_option{");
   });
 });
 
@@ -125,6 +134,23 @@ describe("buildCustomFieldWrites", () => {
     expect(buildCustomFieldWrites([{ custom_field_id: 55001, value: "x" }], [])).toEqual([
       { custom_field: { id: 55001 }, value: "x" },
     ]);
+  });
+});
+
+describe("hasStrippedCustomFieldValues", () => {
+  it("flags a value that has an id but no name, type, or value", () => {
+    // The shape Clio returns when the developer application lacks custom
+    // field permission: the composite id survives, everything else is null.
+    const stripped = mapCustomFieldValues([{ id: "text_line-10422772625" }]);
+    expect(hasStrippedCustomFieldValues(stripped)).toBe(true);
+  });
+
+  it("does not flag normally populated values", () => {
+    expect(hasStrippedCustomFieldValues(mapCustomFieldValues([TEXT, PICKLIST]))).toBe(false);
+  });
+
+  it("does not flag an empty array", () => {
+    expect(hasStrippedCustomFieldValues([])).toBe(false);
   });
 });
 

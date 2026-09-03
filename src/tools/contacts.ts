@@ -2,7 +2,12 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import z from "zod";
 import { clioGet, ClioApiError, extractNextPageToken } from "../utils/clioClient.js";
 import { appendAuditLog } from "../utils/auditLog.js";
-import { CUSTOM_FIELD_VALUE_FIELDS, mapCustomFieldValues } from "../utils/customFields.js";
+import {
+  CUSTOM_FIELD_VALUE_FIELDS,
+  mapCustomFieldValues,
+  hasStrippedCustomFieldValues,
+  CUSTOM_FIELD_PERMISSION_HINT,
+} from "../utils/customFields.js";
 
 const CONTACT_LIST_FIELDS =
   `id,name,email_addresses{address,name},phone_numbers{number,name},company{id,name},type,${CUSTOM_FIELD_VALUE_FIELDS}`;
@@ -36,19 +41,24 @@ export function registerContactTools(server: McpServer): void {
           return { content: [{ type: "text", text: "No contacts found." }] };
         }
 
+        const mappedContacts = contacts.map((c) => ({
+          id: c.id,
+          name: c.name,
+          email: c.email_addresses?.[0]?.address ?? null,
+          phone: c.phone_numbers?.[0]?.number ?? null,
+          company: c.company?.name ?? null,
+          type: c.type,
+          custom_fields: mapCustomFieldValues(c.custom_field_values),
+        }));
+
         const result = {
-          contacts: contacts.map((c) => ({
-            id: c.id,
-            name: c.name,
-            email: c.email_addresses?.[0]?.address ?? null,
-            phone: c.phone_numbers?.[0]?.number ?? null,
-            company: c.company?.name ?? null,
-            type: c.type,
-            custom_fields: mapCustomFieldValues(c.custom_field_values),
-          })),
+          contacts: mappedContacts,
           total_count: data.meta?.records ?? contacts.length,
           has_more: nextPageToken !== null,
           next_page_token: nextPageToken,
+          ...(mappedContacts.some((c) => hasStrippedCustomFieldValues(c.custom_fields)) && {
+            custom_fields_warning: CUSTOM_FIELD_PERMISSION_HINT,
+          }),
         };
 
         return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
@@ -71,6 +81,7 @@ export function registerContactTools(server: McpServer): void {
       try {
         const data = await clioGet(`/contacts/${contact_id}.json`, { fields: CONTACT_DETAIL_FIELDS });
         const c = data.data;
+        const customFields = mapCustomFieldValues(c.custom_field_values);
 
         const result = {
           id: c.id,
@@ -92,7 +103,8 @@ export function registerContactTools(server: McpServer): void {
           })),
           created_at: c.created_at,
           updated_at: c.updated_at,
-          custom_fields: mapCustomFieldValues(c.custom_field_values),
+          custom_fields: customFields,
+          ...(hasStrippedCustomFieldValues(customFields) && { custom_fields_warning: CUSTOM_FIELD_PERMISSION_HINT }),
         };
 
         await appendAuditLog({ tool: "get_contact", args: { contact_id }, outcome: "success" });

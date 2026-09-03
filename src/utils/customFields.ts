@@ -5,10 +5,18 @@
  *
  * 1. READ. A custom field value's `value` is type-dependent, and for `picklist`
  *    fields it is the selected option's *id*, not its label (e.g. "9002"). The
- *    label only arrives if `picklist_option{id,option}` is requested alongside
- *    it. A caller that renders `value` for a picklist shows a meaningless
- *    number, so we expose both: `value` stays raw, `display_value` is what a
- *    human (or a model) should read.
+ *    label only arrives if `picklist_option` is requested alongside it. A
+ *    caller that renders `value` for a picklist shows a meaningless number, so
+ *    we expose both: `value` stays raw, `display_value` is what a human (or a
+ *    model) should read.
+ *
+ *    `custom_field_values` is itself a nested resource on matters/contacts, and
+ *    Clio's `fields` parameter only supports one level of `{...}` nesting: a
+ *    second-level resource named with its own brace group (e.g.
+ *    `custom_field_values{...,custom_field{id}}`) is rejected with a 400. So
+ *    `custom_field` and `picklist_option` are listed bare below and come back
+ *    with Clio's default attributes for each (which include `id` and `option`
+ *    respectively) rather than an explicit sub-selection.
  *
  * 2. WRITE. Setting a field that has no value yet and changing one that already
  *    does use *different* shapes. New value: `{custom_field: {id}, value}`.
@@ -22,7 +30,7 @@
 
 /** The `fields=` sub-selection needed to read custom fields usefully. */
 export const CUSTOM_FIELD_VALUE_FIELDS =
-  "custom_field_values{id,field_name,field_type,value,custom_field{id},picklist_option{id,option}}";
+  "custom_field_values{id,field_name,field_type,value,custom_field,picklist_option}";
 
 export interface MappedCustomField {
   /** Composite value-instance id, e.g. "text_line-55001". Needed to update or clear this value. */
@@ -55,6 +63,24 @@ export function mapCustomFieldValues(raw: unknown): MappedCustomField[] {
     };
   });
 }
+
+/**
+ * True if any mapped value looks permission-stripped: Clio returned a
+ * composite id but null name/type/value. A genuinely unset field never
+ * appears in `custom_field_values` at all, so this shape only occurs when
+ * Clio silently drops the expanded attributes - observed on accounts whose
+ * developer application lacks custom field permission, the same root cause
+ * as the 403 `list_custom_fields` gets from the direct endpoint.
+ */
+export function hasStrippedCustomFieldValues(mapped: MappedCustomField[]): boolean {
+  return mapped.some((m) => m.id !== null && m.name === null && m.type === null && m.value === null);
+}
+
+export const CUSTOM_FIELD_PERMISSION_HINT =
+  "Some custom field values came back with an id but no name, type, or value - this usually means the Clio " +
+  "developer application is missing custom field permission (the same cause as a 403 from list_custom_fields, " +
+  "but Clio does not error here). Open the application under developers.clio.com -> Developer Apps, confirm it " +
+  "has custom fields access, then reconnect. See README Troubleshooting for detail.";
 
 /** One custom field write as the caller expresses it, before Clio's shape rules are applied. */
 export interface CustomFieldWriteInput {

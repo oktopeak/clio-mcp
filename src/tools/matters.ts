@@ -7,6 +7,8 @@ import {
   mapCustomFieldValues,
   buildCustomFieldWrites,
   customFieldIdsForAudit,
+  hasStrippedCustomFieldValues,
+  CUSTOM_FIELD_PERMISSION_HINT,
 } from "../utils/customFields.js";
 
 const MATTER_LIST_FIELDS =
@@ -57,21 +59,26 @@ export function registerMatterTools(server: McpServer): void {
 
         await appendAuditLog({ tool: "list_matters", args: { status, limit, page_token }, outcome: "success", result_count: matters?.length ?? 0 });
 
+        const mappedMatters = matters.map((m) => ({
+          id: m.id,
+          display_number: m.display_number,
+          description: m.description,
+          status: m.status,
+          client: m.client?.name ?? null,
+          practice_area: m.practice_area?.name ?? null,
+          open_date: m.open_date,
+          close_date: m.close_date ?? null,
+          custom_fields: mapCustomFieldValues(m.custom_field_values),
+        }));
+
         const result = {
-          matters: matters.map((m) => ({
-            id: m.id,
-            display_number: m.display_number,
-            description: m.description,
-            status: m.status,
-            client: m.client?.name ?? null,
-            practice_area: m.practice_area?.name ?? null,
-            open_date: m.open_date,
-            close_date: m.close_date ?? null,
-            custom_fields: mapCustomFieldValues(m.custom_field_values),
-          })),
+          matters: mappedMatters,
           total_count: data.meta?.records ?? matters.length,
           has_more: nextPageToken !== null,
           next_page_token: nextPageToken,
+          ...(mappedMatters.some((m) => hasStrippedCustomFieldValues(m.custom_fields)) && {
+            custom_fields_warning: CUSTOM_FIELD_PERMISSION_HINT,
+          }),
         };
 
         return {
@@ -99,6 +106,7 @@ export function registerMatterTools(server: McpServer): void {
       try {
         const data = await clioGet(`/matters/${matter_id}.json`, { fields: MATTER_DETAIL_FIELDS });
         const m = data.data;
+        const customFields = mapCustomFieldValues(m.custom_field_values);
 
         const result = {
           id: m.id,
@@ -111,7 +119,8 @@ export function registerMatterTools(server: McpServer): void {
           close_date: m.close_date ?? null,
           billable: m.billable,
           maildrop_address: m.maildrop_address ?? null,
-          custom_fields: mapCustomFieldValues(m.custom_field_values),
+          custom_fields: customFields,
+          ...(hasStrippedCustomFieldValues(customFields) && { custom_fields_warning: CUSTOM_FIELD_PERMISSION_HINT }),
         };
 
         await appendAuditLog({ tool: "get_matter", args: { matter_id }, outcome: "success", matter_id });
@@ -181,6 +190,7 @@ export function registerMatterTools(server: McpServer): void {
           matter_id: m.id,
         });
 
+        const createdCustomFields = mapCustomFieldValues(m.custom_field_values);
         return {
           content: [{
             type: "text",
@@ -198,7 +208,8 @@ export function registerMatterTools(server: McpServer): void {
                 originating_attorney: m.originating_attorney ? { id: m.originating_attorney.id, name: m.originating_attorney.name } : null,
                 client_reference: m.client_reference ?? client_reference ?? null,
                 open_date: m.open_date,
-                custom_fields: mapCustomFieldValues(m.custom_field_values),
+                custom_fields: createdCustomFields,
+                ...(hasStrippedCustomFieldValues(createdCustomFields) && { custom_fields_warning: CUSTOM_FIELD_PERMISSION_HINT }),
               },
             }, null, 2),
           }],
@@ -286,6 +297,7 @@ export function registerMatterTools(server: McpServer): void {
           matter_id,
         });
 
+        const updatedCustomFields = mapCustomFieldValues(m.custom_field_values);
         return {
           content: [{
             type: "text",
@@ -303,7 +315,8 @@ export function registerMatterTools(server: McpServer): void {
                 originating_attorney: m.originating_attorney ? { id: m.originating_attorney.id, name: m.originating_attorney.name } : null,
                 client_reference: m.client_reference ?? null,
                 open_date: m.open_date,
-                custom_fields: mapCustomFieldValues(m.custom_field_values),
+                custom_fields: updatedCustomFields,
+                ...(hasStrippedCustomFieldValues(updatedCustomFields) && { custom_fields_warning: CUSTOM_FIELD_PERMISSION_HINT }),
               },
             }, null, 2),
           }],
