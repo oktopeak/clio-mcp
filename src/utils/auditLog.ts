@@ -127,6 +127,8 @@ export const AUDIT_ARG_ALLOWLIST: RedactPolicy = {
   matter_activity_summary: ["lookback_days", "calendar_days_ahead", "practice_area_id", "stale_after_days", "limit"],
   // custom fields (definitions only; a field's VALUES are client data)
   list_custom_fields: ["parent_type", "include_deleted"],
+  // never the field's name - a firm can name a field after a client or case detail
+  create_custom_field: ["parent_type", "field_type", "required", "displayed"],
   // relationships (never the contact name or role label)
   list_matter_relationships: ["matter_id", "limit", "page_token"],
   // contacts (never the query string)

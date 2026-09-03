@@ -79,7 +79,7 @@ describe("search_contacts", () => {
   it("requests picklist_option so labels are available", async () => {
     mockClioGet.mockResolvedValue({ data: [MOCK_CONTACT], meta: { records: 1 } });
     await handlers["search_contacts"]({ query: "Acme", limit: 25 });
-    expect(mockClioGet.mock.calls[0][1].fields).toContain("picklist_option{id,option}");
+    expect(mockClioGet.mock.calls[0][1].fields).toContain("picklist_option");
   });
 
   it("maps custom fields by name with a resolved picklist label", async () => {
@@ -99,6 +99,26 @@ describe("search_contacts", () => {
     const result = await handlers["search_contacts"]({ query: "Acme", limit: 25 }) as any;
     const parsed = JSON.parse(result.content[0].text);
     expect(parsed.contacts[0].custom_fields).toEqual([]);
+  });
+
+  it("adds a permission-hint warning when a custom field value is stripped to its id", async () => {
+    mockClioGet.mockResolvedValue({
+      data: [{ ...MOCK_CONTACT, custom_field_values: [{ id: "text_line-999" }] }],
+      meta: { records: 1 },
+    });
+    const result = await handlers["search_contacts"]({ query: "Acme", limit: 25 }) as any;
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.custom_fields_warning).toMatch(/custom field permission/);
+  });
+
+  it("omits the warning when custom field values are normally populated", async () => {
+    mockClioGet.mockResolvedValue({
+      data: [{ ...MOCK_CONTACT, custom_field_values: [PICKLIST_VALUE] }],
+      meta: { records: 1 },
+    });
+    const result = await handlers["search_contacts"]({ query: "Acme", limit: 25 }) as any;
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.custom_fields_warning).toBeUndefined();
   });
 });
 
@@ -128,6 +148,15 @@ describe("get_contact", () => {
     const result = await handlers["get_contact"]({ contact_id: 5 }) as any;
     const parsed = JSON.parse(result.content[0].text);
     expect(parsed.custom_fields).toEqual([]);
+  });
+
+  it("adds a permission-hint warning when a custom field value is stripped to its id", async () => {
+    mockClioGet.mockResolvedValue({
+      data: { ...MOCK_CONTACT, custom_field_values: [{ id: "picklist-999" }] },
+    });
+    const result = await handlers["get_contact"]({ contact_id: 5 }) as any;
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.custom_fields_warning).toMatch(/custom field permission/);
   });
 
   it("returns a not-found message for a 404 without throwing", async () => {

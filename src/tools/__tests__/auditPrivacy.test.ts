@@ -100,6 +100,7 @@ const CASES: { tool: string; args: Record<string, unknown> }[] = [
   { tool: "get_matter", args: { matter_id: 42 } },
   { tool: "get_contact", args: { contact_id: 5 } },
   { tool: "list_custom_fields", args: { include_deleted: false } },
+  { tool: "create_custom_field", args: { name: "INTAKENARRATIVE", parent_type: "Matter", field_type: "text_line", required: false, displayed: true } },
   { tool: "list_matter_relationships", args: { matter_id: 42, limit: 100 } },
   { tool: "matter_activity_summary", args: { lookback_days: 90, calendar_days_ahead: 90, limit: 10 } },
 ];
