@@ -20,6 +20,7 @@ import { registerContactTools } from "./contacts.js";
 import { registerDocumentTools } from "./documents.js";
 import { registerFolderTools } from "./folders.js";
 import { registerCustomFieldTools } from "./customFields.js";
+import { registerMatterStageTools } from "./matterStages.js";
 import { registerRelationshipTools } from "./relationships.js";
 import { registerActivitySummaryTools } from "./activitySummary.js";
 import { registerTaskTools } from "./tasks.js";
@@ -75,6 +76,8 @@ export const TOOL_META: Readonly<Record<string, ToolMeta>> = {
   matter_activity_summary: { title: "Matter activity summary", readOnly: true },
   // custom fields
   list_custom_fields: { title: "List custom fields", readOnly: true },
+  // matter stages
+  list_matter_stages: { title: "List matter stages", readOnly: true },
   // relationships
   list_matter_relationships: { title: "List matter relationships", readOnly: true },
   // contacts
@@ -120,6 +123,7 @@ export const REGISTRARS: ReadonlyArray<(server: McpServer) => void> = [
   registerDocumentTools,
   registerFolderTools,
   registerCustomFieldTools,
+  registerMatterStageTools,
   registerRelationshipTools,
   registerActivitySummaryTools,
   registerTaskTools,
