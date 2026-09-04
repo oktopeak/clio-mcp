@@ -122,11 +122,13 @@ export const AUDIT_ARG_ALLOWLIST: RedactPolicy = {
   // matters
   list_matters: ["status", "limit"],
   get_matter: ["matter_id"],
-  create_matter: ["client_id", "practice_area_id", "status", "open_date", "billable", "responsible_attorney_id", "originating_attorney_id", "custom_field_ids"],
-  update_matter: ["matter_id", "client_id", "practice_area_id", "status", "open_date", "billable", "responsible_attorney_id", "originating_attorney_id", "custom_field_ids"],
+  create_matter: ["client_id", "practice_area_id", "matter_stage_id", "status", "open_date", "billable", "responsible_attorney_id", "originating_attorney_id", "custom_field_ids"],
+  update_matter: ["matter_id", "client_id", "practice_area_id", "matter_stage_id", "status", "open_date", "billable", "responsible_attorney_id", "originating_attorney_id", "custom_field_ids"],
   matter_activity_summary: ["lookback_days", "calendar_days_ahead", "practice_area_id", "stale_after_days", "limit"],
   // custom fields (definitions only; a field's VALUES are client data)
   list_custom_fields: ["parent_type", "include_deleted"],
+  // matter stages (definitions only)
+  list_matter_stages: ["practice_area_id"],
   // relationships (never the contact name or role label)
   list_matter_relationships: ["matter_id", "limit", "page_token"],
   // contacts (never the query string)

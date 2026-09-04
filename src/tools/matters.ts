@@ -10,10 +10,10 @@ import {
 } from "../utils/customFields.js";
 
 const MATTER_LIST_FIELDS =
-  `id,display_number,description,status,client{id,name},practice_area{id,name},open_date,close_date,${CUSTOM_FIELD_VALUE_FIELDS}`;
+  `id,display_number,description,status,client{id,name},practice_area{id,name},matter_stage{id,name},open_date,close_date,${CUSTOM_FIELD_VALUE_FIELDS}`;
 
 const MATTER_DETAIL_FIELDS =
-  `id,display_number,description,status,client{id,name},practice_area{id,name},open_date,close_date,billable,maildrop_address,${CUSTOM_FIELD_VALUE_FIELDS}`;
+  `id,display_number,description,status,client{id,name},practice_area{id,name},matter_stage{id,name},open_date,close_date,billable,maildrop_address,${CUSTOM_FIELD_VALUE_FIELDS}`;
 
 const CUSTOM_FIELD_VALUE_SCHEMA = z.object({
   custom_field_id: z.number().int().positive().describe("Clio custom field definition ID (see list_custom_fields)"),
@@ -65,6 +65,7 @@ export function registerMatterTools(server: McpServer): void {
             status: m.status,
             client: m.client?.name ?? null,
             practice_area: m.practice_area?.name ?? null,
+            matter_stage: m.matter_stage?.name ?? null,
             open_date: m.open_date,
             close_date: m.close_date ?? null,
             custom_fields: mapCustomFieldValues(m.custom_field_values),
@@ -107,6 +108,7 @@ export function registerMatterTools(server: McpServer): void {
           status: m.status,
           client: m.client ? { id: m.client.id, name: m.client.name } : null,
           practice_area: m.practice_area ? { id: m.practice_area.id, name: m.practice_area.name } : null,
+          matter_stage: m.matter_stage ? { id: m.matter_stage.id, name: m.matter_stage.name } : null,
           open_date: m.open_date,
           close_date: m.close_date ?? null,
           billable: m.billable,
@@ -141,6 +143,7 @@ export function registerMatterTools(server: McpServer): void {
         client_id: z.number().int().positive().describe("Clio contact ID of the client for this matter"),
         description: z.string().min(1).describe("Matter subject / description"),
         practice_area_id: z.number().int().positive().optional().describe("Clio practice area ID"),
+        matter_stage_id: z.number().int().positive().optional().describe("Clio matter stage ID (see list_matter_stages) — moving a matter into a stage can trigger Clio workflows/tasks for that stage"),
         status: z.enum(["open", "pending", "closed"]).default("open").describe("Initial matter status"),
         open_date: z.string().date().optional().describe("Open date (YYYY-MM-DD); defaults to today if omitted"),
         billable: z.boolean().default(true).describe("Whether this matter is billable (default true)"),
@@ -150,7 +153,7 @@ export function registerMatterTools(server: McpServer): void {
         custom_field_values: CUSTOM_FIELD_VALUES_SCHEMA,
       },
     },
-    async ({ client_id, description, practice_area_id, status, open_date,
+    async ({ client_id, description, practice_area_id, matter_stage_id, status, open_date,
              billable, responsible_attorney_id, originating_attorney_id, client_reference, custom_field_values }) => {
       try {
         const _d = new Date();
@@ -163,6 +166,7 @@ export function registerMatterTools(server: McpServer): void {
           open_date: open_date ?? todayLocal,
         };
         if (practice_area_id) matterData["practice_area"] = { id: practice_area_id };
+        if (matter_stage_id) matterData["matter_stage"] = { id: matter_stage_id };
         if (responsible_attorney_id) matterData["responsible_attorney"] = { id: responsible_attorney_id };
         if (originating_attorney_id) matterData["originating_attorney"] = { id: originating_attorney_id };
         if (client_reference) matterData["client_reference"] = client_reference;
@@ -174,7 +178,7 @@ export function registerMatterTools(server: McpServer): void {
 
         await appendAuditLog({
           tool: "create_matter",
-          args: { client_id, practice_area_id, status, open_date,
+          args: { client_id, practice_area_id, matter_stage_id, status, open_date,
                   billable, responsible_attorney_id, originating_attorney_id,
                   custom_field_ids: customFieldIdsForAudit(custom_field_values) },
           outcome: "success",
@@ -194,6 +198,7 @@ export function registerMatterTools(server: McpServer): void {
                 billable: m.billable ?? billable,
                 client: m.client ? { id: m.client.id, name: m.client.name } : null,
                 practice_area: m.practice_area ? { id: m.practice_area.id, name: m.practice_area.name } : null,
+                matter_stage: m.matter_stage ? { id: m.matter_stage.id, name: m.matter_stage.name } : null,
                 responsible_attorney: m.responsible_attorney ? { id: m.responsible_attorney.id, name: m.responsible_attorney.name } : null,
                 originating_attorney: m.originating_attorney ? { id: m.originating_attorney.id, name: m.originating_attorney.name } : null,
                 client_reference: m.client_reference ?? client_reference ?? null,
@@ -204,7 +209,7 @@ export function registerMatterTools(server: McpServer): void {
           }],
         };
       } catch (err: any) {
-        const auditArgs = { client_id, practice_area_id, status, open_date,
+        const auditArgs = { client_id, practice_area_id, matter_stage_id, status, open_date,
                             billable, responsible_attorney_id, originating_attorney_id,
                             custom_field_ids: customFieldIdsForAudit(custom_field_values) };
         if (err instanceof ClioApiError && err.statusCode === 422) {
@@ -232,6 +237,7 @@ export function registerMatterTools(server: McpServer): void {
         client_id: z.number().int().positive().optional().describe("Clio contact ID of the client for this matter"),
         description: z.string().min(1).optional().describe("Matter subject / description"),
         practice_area_id: z.number().int().positive().optional().describe("Clio practice area ID"),
+        matter_stage_id: z.number().int().positive().optional().describe("Clio matter stage ID (see list_matter_stages) — moving a matter to a new stage can trigger Clio workflows/tasks for that stage"),
         status: z.enum(["open", "pending", "closed"]).optional().describe("New matter status"),
         open_date: z.string().date().optional().describe("Open date (YYYY-MM-DD)"),
         billable: z.boolean().optional().describe("Whether this matter is billable"),
@@ -241,9 +247,9 @@ export function registerMatterTools(server: McpServer): void {
         custom_field_values: CUSTOM_FIELD_VALUES_SCHEMA,
       },
     },
-    async ({ matter_id, client_id, description, practice_area_id, status, open_date,
+    async ({ matter_id, client_id, description, practice_area_id, matter_stage_id, status, open_date,
              billable, responsible_attorney_id, originating_attorney_id, client_reference, custom_field_values }) => {
-      if ([client_id, description, practice_area_id, status, open_date, billable,
+      if ([client_id, description, practice_area_id, matter_stage_id, status, open_date, billable,
            responsible_attorney_id, originating_attorney_id, client_reference, custom_field_values]
             .every((v) => v === undefined)) {
         return {
@@ -256,6 +262,7 @@ export function registerMatterTools(server: McpServer): void {
         if (client_id !== undefined) matterData["client"] = { id: client_id };
         if (description !== undefined) matterData["description"] = description;
         if (practice_area_id !== undefined) matterData["practice_area"] = { id: practice_area_id };
+        if (matter_stage_id !== undefined) matterData["matter_stage"] = { id: matter_stage_id };
         if (status !== undefined) matterData["status"] = status;
         if (open_date !== undefined) matterData["open_date"] = open_date;
         if (billable !== undefined) matterData["billable"] = billable;
@@ -279,7 +286,7 @@ export function registerMatterTools(server: McpServer): void {
 
         await appendAuditLog({
           tool: "update_matter",
-          args: { matter_id, client_id, practice_area_id, status, open_date,
+          args: { matter_id, client_id, practice_area_id, matter_stage_id, status, open_date,
                   billable, responsible_attorney_id, originating_attorney_id,
                   custom_field_ids: customFieldIdsForAudit(custom_field_values) },
           outcome: "success",
@@ -299,6 +306,7 @@ export function registerMatterTools(server: McpServer): void {
                 billable: m.billable,
                 client: m.client ? { id: m.client.id, name: m.client.name } : null,
                 practice_area: m.practice_area ? { id: m.practice_area.id, name: m.practice_area.name } : null,
+                matter_stage: m.matter_stage ? { id: m.matter_stage.id, name: m.matter_stage.name } : null,
                 responsible_attorney: m.responsible_attorney ? { id: m.responsible_attorney.id, name: m.responsible_attorney.name } : null,
                 originating_attorney: m.originating_attorney ? { id: m.originating_attorney.id, name: m.originating_attorney.name } : null,
                 client_reference: m.client_reference ?? null,
@@ -309,7 +317,7 @@ export function registerMatterTools(server: McpServer): void {
           }],
         };
       } catch (err: any) {
-        const auditArgs = { matter_id, client_id, practice_area_id, status, open_date,
+        const auditArgs = { matter_id, client_id, practice_area_id, matter_stage_id, status, open_date,
                              billable, responsible_attorney_id, originating_attorney_id,
                              custom_field_ids: customFieldIdsForAudit(custom_field_values) };
         if (err instanceof ClioApiError && err.statusCode === 422) {
