@@ -44,7 +44,15 @@ const CUSTOM_FIELD_VALUE_SCHEMA = z.object({
     .union([z.string().min(1), z.number().finite(), z.boolean()])
     .optional()
     .describe("Value to set. For a picklist field this is the option ID, which list_custom_fields returns under picklist_options."),
-  clear: z.boolean().optional().describe("Remove this field's existing value instead of setting one"),
+  clear: z
+    .boolean()
+    .optional()
+    .describe(
+      "Remove this field's existing value instead of setting one. This deletes the value record " +
+        "entirely (not just blanks it), so the field will no longer appear at all in Clio's UI or in " +
+        "this tool's output until a new value is set - unlike a field that was simply never touched, " +
+        "which Clio may still show with an empty placeholder."
+    ),
 });
 
 const CUSTOM_FIELD_VALUES_SCHEMA = z
@@ -214,7 +222,7 @@ export function registerMatterTools(server: McpServer): void {
         // A matter being created has no existing values, so every write is a create.
         if (custom_field_values) matterData["custom_field_values"] = buildCustomFieldWrites(custom_field_values, []);
 
-        const data = await clioPost("/matters.json", { data: matterData });
+        const data = await clioPost("/matters.json", { data: matterData }, { fields: MATTER_DETAIL_FIELDS });
         const m = data.data;
 
         await appendAuditLog({
@@ -331,7 +339,7 @@ export function registerMatterTools(server: McpServer): void {
           );
         }
 
-        const data = await clioPatch(`/matters/${matter_id}.json`, { data: matterData });
+        const data = await clioPatch(`/matters/${matter_id}.json`, { data: matterData }, { fields: MATTER_DETAIL_FIELDS });
         const m = data.data;
 
         await appendAuditLog({

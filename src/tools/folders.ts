@@ -40,12 +40,17 @@ function resolveParentRef(matterId?: number, parentFolderId?: number): ParentRef
  * on a create path produces duplicate folders across the whole book.
  */
 async function findFolderByName(parent: ParentRef, name: string): Promise<any | null> {
-  const params: Record<string, string> = { fields: FOLDER_LIST_FIELDS, query: name, limit: "200" };
+  const params: Record<string, string> = { fields: FOLDER_LIST_FIELDS, limit: "200" };
   if (parent.type === "Matter") params["matter_id"] = String(parent.id);
   else params["parent_id"] = String(parent.id);
 
+  // Deliberately not using Clio's `query` search param here: confirmed live that
+  // it lags behind a folder created moments earlier (a fresh create was
+  // invisible to a `query`-filtered list while a plain, unfiltered list of the
+  // same parent showed it immediately), which would silently defeat the whole
+  // point of if_not_exists in rapid bulk-create runs. A plain paginated listing
+  // is consistent, at the cost of listing every folder under the parent.
   const allFolders = await clioGetAllPages("/folders.json", params);
-  // Clio's `query` is a substring match, so confirm the exact name client-side.
   return allFolders.find((f: any) => f.name === name) ?? null;
 }
 

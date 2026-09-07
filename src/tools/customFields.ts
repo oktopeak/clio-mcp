@@ -113,7 +113,7 @@ export function registerCustomFieldTools(server: McpServer): void {
           data["picklist_options"] = picklist_options.map((option) => ({ option }));
         }
 
-        const res = await clioPost("/custom_fields.json", { data });
+        const res = await clioPost("/custom_fields.json", { data }, { fields: CUSTOM_FIELD_DEFINITION_FIELDS });
         const f = res.data;
 
         await appendAuditLog({ tool: "create_custom_field", args: auditArgs, outcome: "success" });

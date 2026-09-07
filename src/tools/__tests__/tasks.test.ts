@@ -113,6 +113,7 @@ describe("update_task", () => {
     expect(mockClioPatch).toHaveBeenCalledWith(
       "/tasks/1.json",
       expect.objectContaining({ data: expect.objectContaining({ status: "complete" }) }),
+      expect.anything(),
     );
   });
 
@@ -123,6 +124,7 @@ describe("update_task", () => {
     expect(mockClioPatch).toHaveBeenCalledWith(
       "/tasks/1.json",
       expect.objectContaining({ data: expect.objectContaining({ status: "in_progress" }) }),
+      expect.anything(),
     );
   });
 
@@ -133,6 +135,7 @@ describe("update_task", () => {
     expect(mockClioPatch).toHaveBeenCalledWith(
       "/tasks/1.json",
       expect.objectContaining({ data: expect.objectContaining({ due_at: "2026-01-15T00:00:00Z" }) }),
+      expect.anything(),
     );
   });
 
@@ -143,6 +146,7 @@ describe("update_task", () => {
     expect(mockClioPatch).toHaveBeenCalledWith(
       "/tasks/1.json",
       expect.objectContaining({ data: expect.objectContaining({ assignee: { id: 42, type: "User" } }) }),
+      expect.anything(),
     );
   });
 
@@ -181,7 +185,7 @@ describe("complete_task", () => {
     mockClioPatch.mockResolvedValue({ data: TASK_FIXTURE });
     const handler = handlers.get("complete_task")!;
     await handler({ task_id: 1 });
-    expect(mockClioPatch).toHaveBeenCalledWith("/tasks/1.json", { data: { status: "complete" } });
+    expect(mockClioPatch).toHaveBeenCalledWith("/tasks/1.json", { data: { status: "complete" } }, expect.anything());
   });
 
   it("returns task shape with id, name, status, and completed_at", async () => {

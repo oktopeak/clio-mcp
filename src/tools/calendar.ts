@@ -144,7 +144,7 @@ export function registerCalendarTools(server: McpServer): void {
         if (send_email_notification !== undefined)   body.send_email_notification = send_email_notification;
         if (attendee_ids?.length)                    body.attendees = attendee_ids.map((id) => ({ id }));
 
-        const data = await clioPost("/calendar_entries.json", { data: body });
+        const data = await clioPost("/calendar_entries.json", { data: body }, { fields: CALENDAR_FIELDS });
         const entry = data.data as any;
 
         await appendAuditLog({ tool: "create_calendar_entry", args: { summary, start_at, end_at, calendar_owner_id }, outcome: "success" });

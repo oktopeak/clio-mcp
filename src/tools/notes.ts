@@ -28,7 +28,7 @@ export function registerNoteTools(server: McpServer): void {
             type: "Matter",
             matter: { id: matter_id },
           },
-        });
+        }, { fields: "id,subject" });
         const note = data.data;
 
         await appendAuditLog({

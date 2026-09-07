@@ -1,7 +1,7 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.oktopeak/clio-mcp",
-  "description": "Connect Claude to Clio: 34 tools for matters, custom fields, notes, documents, folders, billing.",
+  "description": "Connect Claude to Clio: 36 tools for matters, custom fields, notes, documents, folders, billing.",
   "websiteUrl": "https://oktopeak.com/clio-mcp/",
   "repository": {
     "url": "https://github.com/oktopeak/clio-mcp",
@@ -54,7 +54,7 @@
         },
         {
           "name": "READ_ONLY",
-          "description": "Optional. 'true', '1' or 'yes' leaves the nine write tools (create_matter, create_note, create_task, update_task, complete_task, create_calendar_entry, log_time_entry, create_activity, upload_document) unregistered so Claude can read Clio but never change it. Works on both transports.",
+          "description": "Optional. 'true', '1' or 'yes' leaves the twelve write tools (create_matter, create_custom_field, create_note, create_task, update_task, complete_task, create_calendar_entry, log_time_entry, create_activity, update_matter, create_folder, upload_document) unregistered so Claude can read Clio but never change it. Works on both transports.",
           "isRequired": false,
           "format": "string",
           "isSecret": false

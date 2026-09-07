@@ -137,10 +137,12 @@ describe("folder_exists", () => {
   it("fully paginates via clioGetAllPages rather than reading a single page", async () => {
     mockClioGetAllPages.mockResolvedValue([{ id: 300, name: "Discovery", parent: { id: 42, type: "Matter" } }]);
     await handlers["folder_exists"]({ matter_id: 42, name: "Discovery" });
+    const params = mockClioGetAllPages.mock.calls[0][1] as any;
     expect(mockClioGetAllPages).toHaveBeenCalledWith(
       "/folders.json",
-      expect.objectContaining({ matter_id: "42", query: "Discovery" }),
+      expect.objectContaining({ matter_id: "42" }),
     );
+    expect(params).not.toHaveProperty("query");
   });
 
   it("never filters candidates by parent.type", async () => {
@@ -151,7 +153,7 @@ describe("folder_exists", () => {
     expect(JSON.parse(result.content[0].text).exists).toBe(true);
   });
 
-  it("returns exists:false when no exact name match is found (substring matches from Clio's query are not enough)", async () => {
+  it("returns exists:false when no exact name match is found (a similarly-named folder is not enough)", async () => {
     mockClioGetAllPages.mockResolvedValue([{ id: 500, name: "Discovery Drafts", parent: { id: 42, type: "Matter" } }]);
     const result = await handlers["folder_exists"]({ matter_id: 42, name: "Discovery" }) as any;
     expect(JSON.parse(result.content[0].text).exists).toBe(false);
@@ -162,7 +164,7 @@ describe("folder_exists", () => {
     await handlers["folder_exists"]({ parent_folder_id: 100, name: "Discovery" });
     expect(mockClioGetAllPages).toHaveBeenCalledWith(
       "/folders.json",
-      expect.objectContaining({ parent_id: "100", query: "Discovery" }),
+      expect.objectContaining({ parent_id: "100" }),
     );
   });
 
@@ -271,8 +273,8 @@ describe("create_folder if_not_exists", () => {
   });
 
   it("does not treat a substring match as the same folder", async () => {
-    // Clio's `query` is a substring match, so the exact-name check is what stops
-    // "Pleadings" from being satisfied by "Pleadings 2024".
+    // The lookup fetches every folder under the parent and matches the name
+    // exactly client-side, so "Pleadings" is not satisfied by "Pleadings 2024".
     mockClioGetAllPages.mockResolvedValue([{ id: 502, name: "Pleadings 2024", parent: { id: 42, type: "Matter" } }]);
     const result = await handlers["create_folder"]({ name: "Pleadings", matter_id: 42, if_not_exists: true }) as any;
     expect(JSON.parse(result.content[0].text).created).toBe(true);

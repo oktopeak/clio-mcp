@@ -4,25 +4,57 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
-> **Staged, not released.** These two tools have never run against a live Clio
-> account. `/matter_stages.json`, the `matter_stage` association name and the
-> `create_custom_field` payload are all taken from Clio's documentation and have
-> not been exercised. Do not publish this to npm before the live checklist
-> passes; 2.2.1 is the version that fixes the outage and it is safe to ship on
-> its own.
+## [2.3.0] - 2026-09-07
+
+Matter stages and `create_custom_field`, previously staged and unverified,
+have now been exercised end-to-end against a live Clio account (EU region),
+alongside three bugs the same pass turned up. See
+`docs/live-verification-2026-09-07.md` for the full live test log.
 
 ### Added
 - **Matter stages.** `list_matter_stages` returns the firm's own pipeline
   (Pre-Suit, Discovery, Settlement) grouped by practice area and in order, and
   `matter_stage` now comes back on `list_matters` and `get_matter` while
-  `matter_stage_id` can be set through `create_matter` and `update_matter`. For
-  most firms the stage is the field that says what a matter needs next, and
-  moving one can trigger the Clio workflows attached to that stage.
+  `matter_stage_id` can be set through `create_matter` and `update_matter`.
+  Confirmed live, including that Clio requires `practice_area_id` to already
+  match the stage's practice area on a write — setting a stage from a
+  different practice area fails cleanly with a 422 rather than silently
+  applying. For most firms the stage is the field that says what a matter
+  needs next, and moving one can trigger the Clio workflows attached to that
+  stage.
 - **`create_custom_field`** creates a new custom field definition (Matter or
   Contact) on the connected account, closing the gap where the connector could
   only set values on fields that already existed. The returned `id` works
-  immediately as `custom_field_id` in `create_matter` / `update_matter`. A 403
-  from it is explained the same way `list_custom_fields` explains one.
+  immediately as `custom_field_id` in `create_matter` / `update_matter`,
+  confirmed live for all seven field types including picklist. A 403 from it
+  is explained the same way `list_custom_fields` explains one.
+
+### Fixed
+- **Ten write tools reported writes that had actually succeeded as if they'd
+  failed.** `clioPost`/`clioPatch` never accepted a `fields` query parameter,
+  so every write endpoint fell back to Clio's minimal default response and
+  handlers reading back nested fields (`client`, `practice_area`,
+  `matter_stage`, `custom_fields`, and similar) got `undefined` instead of the
+  real values. The underlying write was correct every time — only each tool's
+  own confirmation was wrong. Affects `create_matter`, `update_matter`,
+  `create_custom_field`, `create_note`, `create_calendar_entry`,
+  `log_time_entry`, `create_activity`, `create_task`, `update_task`,
+  `complete_task`.
+- **`list_matter_relationships` failed on every call.** It requested a bare
+  `type` field that Clio's API rejects outright (`400 ... type is not a valid
+  field`), so the tool never returned data. `description` is the field that
+  actually carries the relationship's role label; `type` is no longer
+  requested.
+- **`create_folder`'s `if_not_exists` could create a duplicate.** It looked up
+  an existing folder by name using Clio's `query=` search parameter, which
+  lags a few seconds behind a just-created folder. Calling `create_folder`
+  twice in quick succession with `if_not_exists: true` could create two
+  folders with the same name. The lookup now lists the parent folder's
+  contents directly and matches the name client-side instead of relying on
+  the search index.
+- README and `server.json` said 34 tools and undercounted the write tools;
+  the connector exposes 36 tools (24 read / 12 write), and the read-only-mode
+  documentation now lists all twelve write tools it hides.
 
 ## [2.2.1] - 2026-09-07
 

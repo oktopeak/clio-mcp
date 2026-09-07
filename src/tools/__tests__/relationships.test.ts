@@ -39,7 +39,6 @@ beforeAll(() => {
 const MOCK_RELATIONSHIP = {
   id: 11,
   description: "Opposing Counsel",
-  type: null,
   contact: {
     id: 5,
     name: "Jane Roe",
@@ -85,13 +84,13 @@ describe("list_matter_relationships", () => {
       });
     });
 
-    it("falls back to type when the firm's label lives there instead of description", async () => {
+    it("returns a null role when description is absent", async () => {
       mockClioGet.mockResolvedValue({
-        data: [{ ...MOCK_RELATIONSHIP, description: null, type: "Expert" }],
+        data: [{ ...MOCK_RELATIONSHIP, description: null }],
         meta: { records: 1 },
       });
       const result = await handlers["list_matter_relationships"]({ matter_id: 42, limit: 100 }) as any;
-      expect(JSON.parse(result.content[0].text).relationships[0].role).toBe("Expert");
+      expect(JSON.parse(result.content[0].text).relationships[0].role).toBeNull();
     });
 
     it("tolerates a relationship with no contact attached", async () => {

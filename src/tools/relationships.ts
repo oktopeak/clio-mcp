@@ -4,7 +4,7 @@ import { clioGet, extractNextPageToken } from "../utils/clioClient.js";
 import { appendAuditLog } from "../utils/auditLog.js";
 
 const RELATIONSHIP_FIELDS =
-  "id,description,type,contact{id,name,type,primary_email_address,primary_phone_number},matter{id,display_number}";
+  "id,description,contact{id,name,type,primary_email_address,primary_phone_number},matter{id,display_number}";
 
 export function registerRelationshipTools(server: McpServer): void {
   server.registerTool(
@@ -49,10 +49,11 @@ export function registerRelationshipTools(server: McpServer): void {
         const result = {
           relationships: relationships.map((r) => ({
             id: r.id,
-            // Clio exposes the label the firm chose for this role under either
-            // `description` or `type` depending on how it was configured, so
-            // surface whichever is populated rather than picking one blindly.
-            role: r.description ?? r.type ?? null,
+            // A bare `type` field at the top level of /relationships.json is not
+            // a valid Clio field (confirmed live: 400 "type is not a valid
+            // field") - `description` is the only confirmed source for the
+            // firm-configured role label.
+            role: r.description ?? null,
             contact: r.contact
               ? {
                   id: r.contact.id,

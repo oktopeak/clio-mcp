@@ -155,9 +155,12 @@ export async function clioGetAllPages(
   return out;
 }
 
-export async function clioPost(path: string, body: unknown): Promise<any> {
+export async function clioPost(path: string, body: unknown, params?: Record<string, string>): Promise<any> {
   const token = await resolveAccessToken();
   const url = new URL(`${getBase()}${path}`);
+  if (params) {
+    for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+  }
   const res = await clioFetch(url.toString(), {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -166,9 +169,12 @@ export async function clioPost(path: string, body: unknown): Promise<any> {
   return res.json();
 }
 
-export async function clioPatch(path: string, body: unknown): Promise<any> {
+export async function clioPatch(path: string, body: unknown, params?: Record<string, string>): Promise<any> {
   const token = await resolveAccessToken();
   const url = new URL(`${getBase()}${path}`);
+  if (params) {
+    for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+  }
   const res = await clioFetch(url.toString(), {
     method: "PATCH",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
