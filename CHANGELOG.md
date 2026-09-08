@@ -8,8 +8,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 Matter stages and `create_custom_field`, previously staged and unverified,
 have now been exercised end-to-end against a live Clio account (EU region),
-alongside three bugs the same pass turned up. See
-`docs/live-verification-2026-09-07.md` for the full live test log.
+alongside three bugs the same pass turned up. Each item below says what was
+confirmed against that account rather than inferred from Clio's docs.
 
 ### Added
 - **Matter stages.** `list_matter_stages` returns the firm's own pipeline
