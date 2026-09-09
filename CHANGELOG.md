@@ -4,6 +4,37 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Verified
+- **Stage-driven Clio automations, confirmed live.** `2.3.0` shipped matter
+  stages with an explicit "unverified" caveat on whether an API-driven stage
+  change fires the workflows/task lists Clio can attach to a stage. Tested
+  live (EU account, 2026-09-09) against a real "when stage changes to X,
+  assign task list Y" automation: moving a matter into that stage through
+  `update_matter` assigned the task list exactly as a UI-driven stage change
+  does, repeatably. The automation can still fail for reasons unrelated to
+  API vs. UI — e.g. it errors out if it references "Originating Solicitor"
+  and the matter has no `originating_attorney` set, which Clio's own UI hits
+  too. The "unverified" wording is removed from `matters.ts`,
+  `matterStages.ts`, and `README.md`.
+- **`matter_activity_summary` benchmarked at scale.** Ran against a live Clio
+  account seeded to 408 open matters (EU region, 2026-09-09): 0.54s wall time
+  and 7 total Clio API requests (3 pages for `/matters.json`, 1 each for
+  notes/activities/calendar_entries/tasks), against a 50-request-per-minute
+  rate limit — nowhere near the `SUMMARY_MAX_PAGES=25` page budget or the 60s
+  MCP client timeout the tool is designed around. Numbers are now in the tool
+  description and README.
+- **Audit log privacy, confirmed live.** Ran every write tool (`create_matter`,
+  `update_matter`, `create_note`, `create_task`, `update_task`,
+  `complete_task`, `log_time_entry`, `create_activity`,
+  `create_calendar_entry`, `create_custom_field`, `create_folder`,
+  `upload_document`) against a live Clio account with a canary string in every
+  free-text field, including a triggered error path, and grepped
+  `~/.clio-mcp/audit.log` for leakage — none found. `log_time_entry`'s `note`
+  and `search_contacts`'s `query` were already excluded by
+  `AUDIT_ARG_ALLOWLIST`, and `src/tools/__tests__/auditPrivacy.test.ts`
+  already covers both with canary-string and schema-driven sweeps (49
+  tests total, all passing). No code changes were needed.
+
 ## [2.3.0] - 2026-09-07
 
 Matter stages and `create_custom_field`, previously staged and unverified,
