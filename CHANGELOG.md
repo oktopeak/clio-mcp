@@ -20,8 +20,9 @@ confirmed against that account rather than inferred from Clio's docs.
   match the stage's practice area on a write — setting a stage from a
   different practice area fails cleanly with a 422 rather than silently
   applying. For most firms the stage is the field that says what a matter
-  needs next, and moving one can trigger the Clio workflows attached to that
-  stage.
+  needs next. Clio can attach workflows and task lists to a stage; whether an
+  API-driven stage change fires them is **not verified** and the tool
+  descriptions say so rather than implying it works.
 - **`create_custom_field`** creates a new custom field definition (Matter or
   Contact) on the connected account, closing the gap where the connector could
   only set values on fields that already existed. The returned `id` works

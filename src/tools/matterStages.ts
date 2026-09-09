@@ -6,8 +6,10 @@ import { appendAuditLog } from "../utils/auditLog.js";
 /**
  * Matter stages: the firm's own pipeline (Pre-Suit, Discovery, Settlement) and,
  * in most Clio setups, what fires the workflows and task lists attached to each
- * step. Reading it is what lets a skill say "this matter is in Discovery with
- * nothing calendared" rather than just "this matter is quiet".
+ * step when a human moves a matter in the UI. Whether an API-driven stage change
+ * fires the same automation is UNVERIFIED and deliberately not claimed anywhere
+ * a caller can read it. Reading stages is what lets a skill say "this matter is
+ * in Discovery with nothing calendared" rather than just "this matter is quiet".
  *
  * No `fields` parameter on purpose. Clio validates that string strictly and
  * answers an unknown entry with a 400 for the whole request, which is how 2.2.0
@@ -22,7 +24,7 @@ export function registerMatterStageTools(server: McpServer): void {
     "list_matter_stages",
     {
       description:
-        "List the matter stages (e.g. Pre-Suit, Discovery, Settlement) configured on this Clio account, in pipeline order per practice area. Call this before setting matter_stage_id on create_matter/update_matter so you know what stages exist and their IDs. Moving a matter into a stage can trigger the Clio workflows and tasks attached to that stage.",
+        "List the matter stages (e.g. Pre-Suit, Discovery, Settlement) configured on this Clio account, in pipeline order per practice area. Call this before setting matter_stage_id on create_matter/update_matter so you know what stages exist and their IDs. Clio can attach workflows and task lists to a stage, but whether a stage change made through the API fires them has NOT been verified - confirm on one matter before relying on it.",
       inputSchema: {
         practice_area_id: z
           .number()

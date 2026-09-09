@@ -414,7 +414,7 @@ Claude selects and calls these tools automatically based on your questions. You 
 
 | Tool | Inputs | What it does |
 |---|---|---|
-| `list_matter_stages` | `practice_area_id` | Lists the account's matter stages (Pre-Suit, Discovery, Settlement and so on) grouped by practice area and in pipeline order. Call this before setting `matter_stage_id`; moving a matter into a stage can trigger the Clio workflows and tasks attached to it |
+| `list_matter_stages` | `practice_area_id` | Lists the account's matter stages (Pre-Suit, Discovery, Settlement and so on) grouped by practice area and in pipeline order. Call this before setting `matter_stage_id`. Clio can attach workflows and task lists to a stage; whether an API-driven stage change fires them is not verified, so confirm on one matter before relying on it |
 
 ### Contacts (2 tools)
 
