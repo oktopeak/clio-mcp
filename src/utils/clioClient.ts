@@ -1,5 +1,5 @@
 import { getValidAccessToken } from "../auth/oauth.js";
-import { requireSessionContext } from "./sessionContext.js";
+import { requireSessionContext, getSessionContext } from "./sessionContext.js";
 import { getClioApiBaseUrl } from "./clioRegion.js";
 
 /**
@@ -20,9 +20,16 @@ export class ClioApiError extends Error {
   }
 }
 
-/** Clio API base (region-aware, honours CLIO_API_BASE). See utils/clioRegion.ts. */
+/**
+ * Clio API base (region-aware, honours CLIO_API_BASE). A hosted deployment
+ * serving multiple firms from one process can't rely on process-wide
+ * CLIO_REGION — it prefers the active session's region, falling back to
+ * CLIO_REGION / the default for stdio mode or a host that doesn't set one.
+ * See utils/clioRegion.ts.
+ */
 function getBase() {
-  return getClioApiBaseUrl();
+  const region = getSessionContext()?.region;
+  return region ? getClioApiBaseUrl(region) : getClioApiBaseUrl();
 }
 export function getClioBaseUrl(): string {
   return getBase();

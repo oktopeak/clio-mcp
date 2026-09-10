@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from "async_hooks";
 import type { ClioTokens } from "../auth/clioOAuth.js";
+import type { ClioRegion } from "./clioRegion.js";
 
 /**
  * Per-request identity and token access for everything that runs inside a
@@ -21,6 +22,12 @@ export interface SessionContext {
   clioUserId?: string;
   /** Host request id, for correlating audit entries with request logs. */
   requestId?: string;
+  /**
+   * Clio data region for this session (hosted deployments serving firms across
+   * regions from one process). Absent means fall back to CLIO_REGION / the
+   * default — see getBase() in utils/clioClient.ts.
+   */
+  region?: ClioRegion;
   getAccessToken(): Promise<string>;
   getTokens(): Promise<ClioTokens | null>;
   storeTokens(tokens: ClioTokens): Promise<void>;
