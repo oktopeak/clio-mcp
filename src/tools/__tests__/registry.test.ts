@@ -124,3 +124,25 @@ describe("isReadOnlyEnv", () => {
     expect(isReadOnlyEnv({ READ_ONLY: v } as NodeJS.ProcessEnv)).toBe(false);
   });
 });
+
+
+describe("contact editing registration", () => {
+  it("allows browsing but makes updates unreachable in read-only mode", async () => {
+    const {client,server,tools}=await listTools({readOnly:true});
+    try {
+      const names=tools.map(t=>t.name);
+      expect(names).toEqual(expect.arrayContaining(["list_contacts","get_contact","search_contacts"]));
+      expect(names).not.toContain("update_contact");
+      const r=await client.callTool({name:"update_contact",arguments:{contact_id:5,expected_etag:"v1",changes:{title:"Director"}}});
+      expect(r.isError).toBe(true);
+      expect(JSON.stringify(r.content)).toContain("update_contact not found");
+    } finally {await client.close();await server.close();}
+  });
+  it("advertises writes and does not promise idempotence for nested additions", async () => {
+    const {client,server,tools}=await listTools();
+    try {
+      expect(tools.find(t=>t.name==="update_contact")?.annotations).toMatchObject({readOnlyHint:false,destructiveHint:true,idempotentHint:false});
+      expect(tools).toHaveLength(38);
+    } finally {await client.close();await server.close();}
+  });
+});

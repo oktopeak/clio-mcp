@@ -4,6 +4,12 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+- `list_contacts` enumerates accessible contacts with cursor pagination; short search pages also retain their cursor.
+- `get_contact` now includes the contact ETag and nested email, phone and address IDs.
+- `update_contact` edits names, title, contact details and custom-field values using conditional PATCH. Validates association ownership, preserves omitted data, rejects concurrent changes, and reports uncertain outcomes without replaying writes.
+- Contact update audit records contain metadata only; read-only mode removes the new write tool. Tool inventory is now 38 tools, including 13 write tools.
+
 ## [2.3.0] - 2026-09-07
 
 Matter stages and `create_custom_field`, previously staged and unverified,

@@ -15,7 +15,7 @@ vi.mock("../clioRegion.js", () => ({
   getClioApiBaseUrl: vi.fn().mockReturnValue("https://app.clio.com/api/v4"),
 }));
 
-import { clioGet, clioGetAllPages, clioGetWithFieldFallback, ClioApiError } from "../clioClient.js";
+import { clioPatch, clioGet, clioGetAllPages, clioGetWithFieldFallback, ClioApiError } from "../clioClient.js";
 
 function jsonResponse(body: unknown, init?: { status?: number; headers?: Record<string, string> }) {
   return new Response(JSON.stringify(body), {
@@ -263,5 +263,39 @@ describe("clioGetWithFieldFallback", () => {
 
     await expect(clioGetWithFieldFallback("/matters.json", { fields: FULL }, BASE)).rejects.toThrow(ClioApiError);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+
+describe("conditional contact PATCH", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  it("sends the exact ETag and supplied partial body", async () => {
+    const f=vi.fn().mockResolvedValue(jsonResponse({data:{id:5,etag:'"v2"'}}));
+    vi.stubGlobal("fetch",f);
+    await clioPatch("/contacts/5.json",{data:{title:"Director"}},{fields:"id,etag"},{ifMatch:'"v1"'});
+    expect(f.mock.calls[0][0]).toBe("https://app.clio.com/api/v4/contacts/5.json?fields=id%2Cetag");
+    expect(f.mock.calls[0][1]).toMatchObject({method:"PATCH",headers:{"If-Match":'"v1"',Authorization:"Bearer test-token"},body:'{"data":{"title":"Director"}}'});
+  });
+  it("leaves legacy PATCH requests unconditional", async () => {
+    const f=vi.fn().mockResolvedValue(new Response(null,{status:204}));
+    vi.stubGlobal("fetch",f);
+    expect(await clioPatch("/tasks/5.json",{data:{status:"complete"}})).toEqual({});
+    expect(f.mock.calls[0][1].headers).not.toHaveProperty("If-Match");
+  });
+  it.each([412,500])("does not replay HTTP %s", async status => {
+    const f=vi.fn().mockResolvedValue(jsonResponse({error:"rejected"},{status}));
+    vi.stubGlobal("fetch",f);
+    await expect(clioPatch("/contacts/5.json",{data:{title:"Director"}},undefined,{ifMatch:'"v1"'})).rejects.toMatchObject({statusCode:status});
+    expect(f).toHaveBeenCalledTimes(1);
+  });
+  it("does not replay an uncertain network failure", async () => {
+    const f=vi.fn().mockRejectedValue(new Error("connection closed"));vi.stubGlobal("fetch",f);
+    await expect(clioPatch("/contacts/5.json",{data:{title:"Director"}})).rejects.toThrow();
+    expect(f).toHaveBeenCalledTimes(1);
+  });
+  it("preserves typed 429 after the retry budget is exhausted", async () => {
+    const f=vi.fn().mockResolvedValue(jsonResponse({}, {status:429,headers:{"Retry-After":"0"}}));vi.stubGlobal("fetch",f);
+    await expect(clioPatch("/contacts/5.json",{data:{title:"Director"}})).rejects.toMatchObject({statusCode:429});
+    expect(f).toHaveBeenCalledTimes(7);
   });
 });

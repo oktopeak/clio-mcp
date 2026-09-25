@@ -45,6 +45,7 @@ const { mockClioGet, mockClioPost, mockClioPatch, mockClioGetAllPages, mockAppen
 
 vi.mock("../../utils/clioClient.js", () => ({
   clioGet: mockClioGet,
+  clioGetWithFieldFallback: async (path: string, params: any) => ({ body: await mockClioGet(path, params) }),
   clioPost: mockClioPost,
   clioPatch: mockClioPatch,
   clioGetAllPages: mockClioGetAllPages,
@@ -99,6 +100,8 @@ const CANARIES = [
 const CASES: { tool: string; args: Record<string, unknown> }[] = [
   { tool: "create_matter", args: { client_id: 1, description: "INTAKENARRATIVE", status: "open", billable: true, custom_field_values: [{ custom_field_id: 10, value: "LOSSAMOUNT47300" }] } },
   { tool: "update_matter", args: { matter_id: 42, description: "INTAKENARRATIVE", custom_field_values: [{ custom_field_id: 10, value: "SUSPECTEDTHIEFNAME" }] } },
+  { tool: "list_contacts", args: { limit: 25 } },
+  { tool: "update_contact", args: { contact_id: 5, expected_etag: "v1", changes: { title: "INTAKENARRATIVE", custom_field_values: [{custom_field_id: 10, value: "LOSSAMOUNT47300"}] } } },
   { tool: "search_contacts", args: { query: "SEARCHQUERYCANARY", limit: 25 } },
   { tool: "create_note", args: { matter_id: 42, subject: "INTAKENARRATIVE", body: "SUSPECTEDTHIEFNAME" } },
   { tool: "list_notes", args: { matter_id: 42, limit: 25 } },
@@ -131,6 +134,8 @@ describe("audit log never records client data", () => {
 
   for (const { tool, args } of CASES) {
     it(`${tool} logs the call without its content`, async () => {
+      if (tool === "list_contacts") mockClioGet.mockResolvedValue({data:[],meta:{}});
+      if (tool === "update_contact") mockClioGet.mockResolvedValue({data:{id:5,etag:"v1",type:"Person",first_name:"Ana",last_name:"Silva",custom_field_values:[]}});
       await handlers[tool](args);
       expect(mockAppendAuditLog).toHaveBeenCalled();
       const text = loggedText();
@@ -180,7 +185,7 @@ describe("audit sweep covers every registered tool", () => {
     const { REGISTRARS } = await import("../index.js");
     const captureServer = {
       registerTool: (name: string, config: any, handler: Function) => {
-        schemas[name] = config?.inputSchema ?? {};
+        schemas[name] = config?.inputSchema?.shape ?? config?.inputSchema ?? {};
         allHandlers[name] = handler;
       },
       registerResource: () => {},
@@ -251,5 +256,30 @@ describe("audit sweep covers every registered tool", () => {
         expect(logged, `${tool} leaked ${canary} into the audit log`).not.toContain(canary);
       }
     }
+  });
+});
+
+
+describe("contact audit privacy on real handler paths", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    mockAppendAuditLog.mockResolvedValue(undefined);
+    mockClioGet.mockResolvedValue({data:{id:5,etag:"PRIVATE_ETAG",type:"Person",first_name:"Ana",last_name:"Silva",custom_field_values:[]}});
+    mockClioPatch.mockResolvedValue({data:{id:5,etag:"next"}});
+  });
+  const input={contact_id:5,expected_etag:"PRIVATE_ETAG",changes:{title:"PRIVATE_TITLE",custom_field_values:[{custom_field_id:7,value:"PRIVATE_VALUE"}]}};
+  it("records only IDs and outcome after a successful change", async () => {
+    const result=await handlers.update_contact(input);
+    expect(result.isError).toBeUndefined();
+    expect(mockClioPatch).toHaveBeenCalledTimes(1);
+    expect(mockAppendAuditLog).toHaveBeenCalledExactlyOnceWith({tool:"update_contact",args:{contact_id:5,custom_field_ids:[7]},outcome:"success"});
+    expect(JSON.stringify(mockAppendAuditLog.mock.calls)).not.toContain("PRIVATE_");
+  });
+  it.each(["preflight","patch"])("removes private provider errors during %s", async stage => {
+    (stage==="preflight"?mockClioGet:mockClioPatch).mockRejectedValue(new MockClioApiError(422,"PRIVATE_PROVIDER_EMAIL@example.test"));
+    const r=await handlers.update_contact(input);
+    expect(r.isError).toBe(true);expect(mockAppendAuditLog).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify([r,mockAppendAuditLog.mock.calls])).not.toContain("PRIVATE_");
+    expect(mockAppendAuditLog).toHaveBeenCalledWith(expect.objectContaining({outcome:"error",error_message:"validation_rejected"}));
   });
 });

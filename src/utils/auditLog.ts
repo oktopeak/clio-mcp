@@ -134,6 +134,8 @@ export const AUDIT_ARG_ALLOWLIST: RedactPolicy = {
   // relationships (never the contact name or role label)
   list_matter_relationships: ["matter_id", "limit", "page_token"],
   // contacts (never the query string)
+  update_contact: ["contact_id", "custom_field_ids"],
+  list_contacts: ["limit", "page_token"],
   search_contacts: ["limit", "page_token"],
   get_contact: ["contact_id"],
   // documents (never the query, the file path or the file name)

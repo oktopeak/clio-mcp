@@ -23,7 +23,7 @@ function collectSchemaKeys(): Record<string, string[]> {
   const keys: Record<string, string[]> = {};
   const fake = {
     registerTool: (name: string, config: any) => {
-      keys[name] = Object.keys(config?.inputSchema ?? {});
+      keys[name] = Object.keys(config?.inputSchema?.shape ?? config?.inputSchema ?? {});
     },
     registerResource: () => {},
   };

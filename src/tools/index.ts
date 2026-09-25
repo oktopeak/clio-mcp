@@ -55,6 +55,7 @@ export const WRITE_TOOLS: ReadonlySet<string> = new Set([
   "create_activity",
   "create_note",
   "update_matter",
+  "update_contact",
   "create_folder",
 ]);
 
@@ -83,6 +84,8 @@ export const TOOL_META: Readonly<Record<string, ToolMeta>> = {
   // relationships
   list_matter_relationships: { title: "List matter relationships", readOnly: true },
   // contacts
+  update_contact: { title: "Update contact", readOnly: false, destructive: true, idempotent: false },
+  list_contacts: { title: "List contacts", readOnly: true },
   search_contacts: { title: "Search contacts", readOnly: true },
   get_contact: { title: "Get contact", readOnly: true },
   // documents

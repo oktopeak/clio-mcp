@@ -1,3 +1,4 @@
+import z from "zod";
 import { vi, describe, it, expect, beforeAll, beforeEach } from "vitest";
 
 const { mockClioGet, mockClioGetAllPages, mockAppendAuditLog, MockClioApiError } = vi.hoisted(() => {
@@ -40,9 +41,11 @@ vi.mock("../../utils/auditLog.js", () => ({
 import { registerContactTools } from "../contacts.js";
 
 const handlers: Record<string, Function> = {};
+const schemas: Record<string, any> = {};
 const fakeServer = {
   registerTool: vi.fn((name: string, _schema: any, handler: Function) => {
     handlers[name] = handler;
+    schemas[name] = _schema.inputSchema;
   }),
 };
 
@@ -57,6 +60,7 @@ const MOCK_CONTACT = {
   last_name: null,
   title: null,
   type: "Company",
+  sales_tax_number: null,
   company: null,
   email_addresses: [],
   phone_numbers: [],
@@ -126,6 +130,15 @@ describe("get_contact", () => {
     ]);
   });
 
+  // Deliberately invalid, synthetic tax identifiers; never use client data in fixtures.
+  it("returns the native tax number and ETag for a contact edit", async () => {
+    mockClioGet.mockResolvedValue({ data: { ...MOCK_CONTACT, etag: "v1", sales_tax_number: "000000000" } });
+    const result = await handlers["get_contact"]({ contact_id: 5 }) as any;
+    const parsed = JSON.parse(result.content[0].text);
+    expect(mockClioGet.mock.calls[0][1].fields).toContain("sales_tax_number");
+    expect(parsed).toMatchObject({ etag: "v1", sales_tax_number: "000000000" });
+  });
+
   it("falls back to an empty array when the API response omits custom fields", async () => {
     mockClioGet.mockResolvedValue({ data: MOCK_CONTACT });
     const result = await handlers["get_contact"]({ contact_id: 5 }) as any;
@@ -168,4 +181,55 @@ describe("custom field warnings", () => {
     const result = await handlers["get_contact"]({ contact_id: 5 }) as any;
     expect(JSON.parse(result.content[0].text).custom_fields_warning).toBeUndefined();
   });
+});
+
+
+describe("contact enumeration and edit identifiers", () => {
+  beforeEach(() => { vi.clearAllMocks(); mockClioGet.mockReset(); mockClioGetAllPages.mockResolvedValue([]); });
+  it("follows short pages and forwards the cursor without a query", async () => {
+    mockClioGet.mockResolvedValueOnce({ data: [MOCK_CONTACT], meta: {paging: {
+      next: "https://eu.app.clio.com/api/v4/contacts.json?page_token=p2"}}})
+      .mockResolvedValueOnce({data: [], meta: {}});
+    const first = JSON.parse((await handlers.list_contacts({limit:25})).content[0].text);
+    expect(first).toMatchObject({has_more:true,next_page_token:"p2"});
+    expect(mockClioGet.mock.calls[0][1]).not.toHaveProperty("query");
+    const second = JSON.parse((await handlers.list_contacts({limit:25,page_token:"p2"})).content[0].text);
+    expect(mockClioGet.mock.calls[1][1]).toMatchObject({page_token:"p2",limit:"25"});
+    expect(second).toMatchObject({contacts:[],has_more:false,next_page_token:null});
+  });
+  it("retains a search cursor even on a short page", async () => {
+    mockClioGet.mockResolvedValue({data:[MOCK_CONTACT],meta:{paging:{next:"https://eu.app.clio.com/api/v4/contacts.json?page_token=p2"}}});
+    expect(JSON.parse((await handlers.search_contacts({query:"Acme",limit:25})).content[0].text).next_page_token).toBe("p2");
+  });
+  it("defaults and bounds listing inputs", () => {
+    const schema=z.object(schemas.list_contacts);
+    expect(schema.parse({})).toEqual({limit:25});
+    for (const input of [{limit:0},{limit:201},{page_token:""}]) expect(schema.safeParse(input).success).toBe(false);
+  });
+  it("returns ETag and nested IDs while preserving labels", async () => {
+    mockClioGet.mockResolvedValue({data:{...MOCK_CONTACT,etag:'"v1"',
+      email_addresses:[{id:10,name:"Work",address:"a@example.test"}],
+      phone_numbers:[{id:11,name:"Mobile",number:"+351 210 000 000"}],
+      addresses:[{id:12,name:"Home",city:"Lisboa"}]}});
+    const data=JSON.parse((await handlers.get_contact({contact_id:5})).content[0].text);
+    expect(data).toMatchObject({etag:'"v1"',emails:[{id:10,label:"Work",address:"a@example.test"}],
+      phone_numbers:[{id:11,label:"Mobile"}],addresses:[{id:12,label:"Home",city:"Lisboa"}]});
+    expect(mockClioGet.mock.calls[0][1].fields).toContain("email_addresses{id,address,name}");
+  });
+  it("keeps upstream contact data out of listing errors and audit entries", async () => {
+    mockClioGet.mockRejectedValue(new MockClioApiError(403,"PRIVATE_CONTACT"));
+    const result=await handlers.list_contacts({limit:25});
+    expect(result.isError).toBe(true);
+    expect(JSON.stringify([result,mockAppendAuditLog.mock.calls])).not.toContain("PRIVATE_CONTACT");
+  });
+});
+
+
+it("records only a failure when a listing response cannot be mapped", async () => {
+  vi.clearAllMocks(); mockClioGet.mockReset();
+  mockClioGet.mockResolvedValue({data:{unexpected:"PRIVATE_CONTACT"},meta:{}});
+  const r=await handlers.list_contacts({limit:25});
+  expect(r.isError).toBe(true);
+  expect(mockAppendAuditLog).toHaveBeenCalledTimes(1);
+  expect(mockAppendAuditLog).toHaveBeenCalledWith(expect.objectContaining({outcome:"error"}));
 });
