@@ -74,6 +74,9 @@ export async function runOAuthFlow(): Promise<ClioTokens> {
   const { default: open } = await import("open");
   await open(authUrl);
   console.error(`[auth] Please complete the login in your browser...`);
+  // No browser on headless Linux, WSL or a server: the link can be opened by hand.
+  // It carries the client id and a one-time state, never the secret.
+  console.error(`[auth] If no browser opened, open this link: ${authUrl}`);
 
   const code = await waitForCallback(port, state);
   const tokens = await exchangeWithDiagnostics({ clientId, clientSecret, tokenUrl, redirectUri, code });

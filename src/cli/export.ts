@@ -1,6 +1,6 @@
 import { EXIT, parseExportArgs } from "./args.js";
 import type { ExportArgs } from "./args.js";
-import { EXPORT_USAGE } from "./usage.js";
+import { AUTH_COMMAND, EXPORT_USAGE } from "./usage.js";
 import { checkOutputFolder } from "./outputFolder.js";
 import { validateAuthEnv } from "../config/startupValidation.js";
 import { getClioRegion } from "../utils/clioRegion.js";
@@ -64,7 +64,7 @@ export async function runExport(argv: readonly string[], overrides: Partial<Expo
     return EXIT.FATAL;
   }
   if (tokens === null) {
-    deps.stderr("Not logged in to Clio: run auth first (npx @oktopeak/clio-mcp auth).\n");
+    deps.stderr(`Not logged in to Clio: run auth first (${AUTH_COMMAND}).\n`);
     return EXIT.NOT_LOGGED_IN;
   }
 

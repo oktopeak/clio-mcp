@@ -1,14 +1,19 @@
 import { DEFAULT_RATE, DEFAULT_CONCURRENCY, MAX_CONCURRENCY } from "./args.js";
 
+// The standalone @oktopeak/clio-export package runs this same CLI. It sets these two
+// variables before importing it, so the help text names the command the user typed.
+export const AUTH_COMMAND = process.env.CLIO_EXPORT_AUTH_COMMAND ?? "npx @oktopeak/clio-mcp auth";
+export const EXPORT_COMMAND = process.env.CLIO_EXPORT_COMMAND ?? "npx @oktopeak/clio-mcp export";
+
 export const AUTH_USAGE = `Usage:
-  npx @oktopeak/clio-mcp auth
+  ${AUTH_COMMAND}
 
 Opens your browser to log in to Clio, saves the token (encrypted), and prints
 who logged in and when the token expires.
 `;
 
 export const EXPORT_USAGE = `Usage:
-  npx @oktopeak/clio-mcp export --out <folder> [options]
+  ${EXPORT_COMMAND} --out <folder> [options]
 
 Reads your whole Clio account into data files and a folder tree. It never
 writes to Clio and never opens a browser: run "auth" first.

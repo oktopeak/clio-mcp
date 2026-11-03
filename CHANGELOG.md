@@ -4,7 +4,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
-## [2.5.0] - 2026-10-19
+## [2.5.0] - 2026-11-03
 
 ### Added
 
@@ -34,6 +34,11 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Changed
 
+- `@oktopeak/clio-mcp/cli` is exported, so another package can run the `auth`
+  and `export` commands. Their help text names the command from
+  `CLIO_EXPORT_AUTH_COMMAND` and `CLIO_EXPORT_COMMAND` when those are set.
+- `auth` also prints the login link, for machines where no browser opens
+  (WSL, headless Linux, a server).
 - The Clio client can be configured for long-running reads (request rate,
   retries of server and network errors on GET, request timeout). It is off
   unless the export turns it on, so the connector behaves as before.
@@ -45,8 +50,13 @@ All notable changes to this project are documented here. The format follows [Kee
   renders them, and original email files.
 - Documents that belong to no matter are detected by comparing counts and
   reported as NOT ENUMERATED when they exist; they are not exported yet.
-- The export has been verified against a local fake Clio. Behaviour against
-  live accounts is recorded in `docs/export-probe-results.md`.
+- Tested live on 2026-11-03 against a Clio EU test account (408 matters, 8
+  documents): dry run, full export interrupted with Ctrl-C and finished with
+  `--resume` (COMPLETE), and a refresh run that downloaded nothing again. Bills
+  and hard or soft cost entries are covered against a fake Clio only, because
+  the test account has none. Endpoint probes are in `docs/export-probe-results.md`.
+- The same command ships on its own as `@oktopeak/clio-export`
+  (`npx @oktopeak/clio-export --out <folder>`), a thin wrapper over this package.
 
 ## [2.4.0] - 2026-10-01
 
