@@ -200,7 +200,7 @@ The 403 on `/custom_fields.json` came from the **old app's permissions**. With t
 - `communications`, `allocations`, `trust_line_items` and `bank_transactions` now answer **200** (0 records each); with the old app `communications`, `allocations` and `bank_transactions` answered 403.
 - Everything else is unchanged: 418 folders, 3 documents, `updated_since` honoured for the same types, download answers 303 to a storage link that works without the login, `/documents/{id}/versions.json` is the only version endpoint that exists.
 
-Full output of that run is in `probe-output-2.md` in the repository root (untracked). The relevant sections:
+The relevant sections of that run's output:
 
 ### 7. Other endpoints
 

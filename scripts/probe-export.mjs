@@ -7,7 +7,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);
 
 if (process.argv.includes("--help") || process.argv.includes("-h")) {
-  console.log(`Read-only probe for the Exit Copy export.
+  console.log(`Read-only probe for the export command.
 
 Usage:
   npm run build

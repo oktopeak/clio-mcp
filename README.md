@@ -48,14 +48,16 @@ Watch Claude pull live data from Clio in under a minute (matters, contacts, task
 
 `npx @oktopeak/clio-mcp export --out <folder>` copies every matter, contact, note, task, calendar entry, time entry, expense, bill and document out of Clio onto your own computer, read-only, under your own Clio app. Run `npx @oktopeak/clio-mcp auth` first. See [Exporting your whole account](#exporting-your-whole-account).
 
-## Upgrading to 2.2.0
+Only want the export, not the Claude connector? The same command ships on its own as [`@oktopeak/clio-export`](https://github.com/oktopeak/clio-export): `npx @oktopeak/clio-export --out <folder>`. Walkthrough: [oktopeak.com/clio-export/](https://oktopeak.com/clio-export/?utm_source=github&utm_medium=readme&utm_campaign=clio-mcp&utm_content=new-in-250).
+
+## Upgrading from 2.0.1
 
 If you installed before September 2026 you are on 2.0.1, and there is one reason to upgrade that is worth stating plainly rather than burying in a changelog.
 
-**2.0.1 writes client data to its audit log.** Contact search queries, note subjects, matter descriptions and custom field values were all recorded verbatim in `~/.clio-mcp/audit.log`. The log is a plain file that nothing rotates. In 2.2.0 audit entries carry ids, counts, dates and page tokens only, enforced by an allowlist rather than a denylist, with a test that fails if any tool ever starts logging content again.
+**2.0.1 writes client data to its audit log.** Contact search queries, note subjects, matter descriptions and custom field values were all recorded verbatim in `~/.clio-mcp/audit.log`. The log is a plain file that nothing rotates. Since 2.2.0 audit entries carry ids, counts, dates and page tokens only, enforced by an allowlist rather than a denylist, with a test that fails if any tool ever starts logging content again.
 
 ```bash
-npm install -g @oktopeak/clio-mcp@2.2.0   # or just restart Claude Desktop if you use npx
+npm install -g @oktopeak/clio-mcp@latest   # or just restart Claude Desktop if you use npx
 ```
 
 Your existing `~/.clio-mcp/audit.log` still contains whatever the old version put there. It is worth reading before you decide what to do with it.
@@ -576,6 +578,17 @@ Empty folders are listed in `folders.jsonl` but are not created on disk; only fo
 
 The CSV files open cleanly in Excel. Text that starts with `=`, `+`, `-` or `@` gets a leading apostrophe in the CSV so Excel does not run it as a formula; numbers are never changed, and the `.jsonl` files always hold the exact values.
 
+### Other ways to get your data out
+
+This is not the only option, and for some firms it is not the right one:
+
+- **Clio's built-in export** (admins only) gives CSV files for matters, contacts, notes, tasks, calendar, communications, time and expenses. It does not include documents, bills or trust transactions. If spreadsheets are all you need, use it.
+- **[FileScience](https://www.clio.com/app-directory/filescience/)** runs a hosted, daily cloud-to-cloud backup of Clio; the copy is kept in FileScience's cloud.
+- **[Faster Suite](https://www.clio.com/app-directory/faster-suite/)** has a backup tool that downloads all Clio documents.
+- **[Clio Data Escrow](https://help.clio.com/hc/en-us/articles/9290346939547)** keeps a weekly copy of Clio information and documents in a secure location.
+
+This command is free and open source, runs once on your computer whenever you start it, and puts records and documents in one folder you control. For a nightly copy that runs without anyone starting it, you need a scheduler or one of the hosted options above.
+
 ### What is not included
 
 - Ledger reports (trust ledger, client ledger, billing history, accounts receivable, work in progress). `--only ledger_reports` says so and exports nothing.
@@ -586,7 +599,7 @@ The CSV files open cleanly in Excel. Text that starts with `=`, `+`, `-` or `@` 
 
 Known limitation: expenses are read per Clio activity type (`ExpenseEntry`, `HardCostEntry`, `SoftCostEntry`), and each row carries its type. If Clio also lists hard and soft cost entries under `ExpenseEntry`, those rows would appear twice in `data/expenses.*`. This has not been seen: no account we tested has hard or soft cost entries. Rows can be told apart by their `id`.
 
-Tested: the export was run live on a Clio EU account, including a 5 MB document, names with accents, double spaces and special characters, a refresh run (0 files downloaded again) and a resume after an interrupt.
+Tested live on 2026-11-03 against a Clio EU test account (408 matters, 419 folders, 8 documents, 11 MB): a dry run, a full export stopped with Ctrl-C (exit 4) and finished with `--resume` (COMPLETE, no duplicate rows), and a refresh run that downloaded 0 files again. Earlier live probes covered a 5 MB document and names with accents, double spaces and special characters. The test account has no bills and no hard or soft cost entries, so those types are covered by tests against a fake Clio only.
 
 ### How long it takes
 
